@@ -10,6 +10,7 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 using Microsoft.VisualBasic;
+using static System.Net.Mime.MediaTypeNames;
 
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
@@ -25,7 +26,7 @@ ReceiverOptions receiverOptions = new()
 int role = 0;
 string addtxt = "";
 string menuanswer = " \n \nЧто вы хотите сделать?";
-string addhours = "Сколько часов будет активно объявление? \nКоличество часов должно быть целым числом и кратно 2";
+string addhours = "Сколько часов будет активно объявление? \nКоличество часов должно быть целым числом";
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
 string deleteadd = "Введите номер заявки, которую надо удалить";
@@ -62,7 +63,8 @@ ReplyKeyboardMarkup PrkmAdds = new(new[]
 
 ReplyKeyboardMarkup PrkmCabinet = new(new[]
 {
-    new KeyboardButton("")
+    new KeyboardButton("Отказаться от заявки"),
+    new KeyboardButton("Вернуться в меню")
 })
 {ResizeKeyboard = true};
 
@@ -110,6 +112,25 @@ async Task SentMenu(Message message, long chatId, CancellationToken cancellation
     }
 }
 
+async Task SentCabinet(Message message, long chatId, CancellationToken cancellationToken, string txt)
+{
+    if (role == 1)
+    {
+        Message sentMenu = await botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: $"{txt}",
+            replyMarkup: ArkmCabinet,
+            cancellationToken: cancellationToken);
+    }
+    else if(role == 2){
+        Message sentMenu = await botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: $"{txt}",
+            replyMarkup: PrkmCabinet,
+            cancellationToken: cancellationToken);
+    }
+}
+
 async Task ChooseRole(Message message, long chatId, CancellationToken cancellationToken)
 {
     ReplyKeyboardMarkup rkmChooseRole = new(new[]
@@ -138,12 +159,24 @@ async Task WrongCommand(long chatId, string txt, CancellationToken cancellationT
 }
 
 async Task WrongData(Message message, long chatId, CancellationToken cancellationToken)
-{    
-    Message sentMenu = await botClient.SendTextMessageAsync(
+{
+    if (role == 1)
+    {
+        Message sentMenu = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: $"Вы ввели неправильное значение {menuanswer}",
         replyMarkup: ArkmMenu,
         cancellationToken: cancellationToken);
+    }
+    else if (role == 2)
+    {
+        Message sentMenu = await botClient.SendTextMessageAsync(
+        chatId: chatId,
+        text: $"Вы ввели неправильное значение {menuanswer}",
+        replyMarkup: PrkmMenu,
+        cancellationToken: cancellationToken);
+    }
+    
 }
 
 async Task PersonalCabinet(Message message, long chatId, CancellationToken cancellationToken)
@@ -185,12 +218,7 @@ async Task PersonalCabinet(Message message, long chatId, CancellationToken cance
             msg = "Нет заявок";
         }
         Console.WriteLine($"{msg} - - - - - - - -\n");
-
-        Message sentCabinet = await botClient.SendTextMessageAsync(
-            chatId: chatId,
-            text: $"{msg}",
-            replyMarkup: ArkmCabinet,
-            cancellationToken: cancellationToken);
+        await SentCabinet(message, chatId, cancellationToken, msg);
     }
     catch (Exception ex)
     {
@@ -212,24 +240,21 @@ async Task ShowAllAvailableAdds(Message message, long chatId, CancellationToken 
         SqlDataAdapter adds_adpt = new(query, myConnection);
         DataTable adds_table = new();
         adds_adpt.Fill(adds_table);
-
+        myConnection.Close();
         if (adds_table.Rows.Count > 0)
         {
             for (int i = 0; i < adds_table.Rows.Count; i++)
             {
-                row += $"Заявка №{adds_table.Rows[i][0]} \nТекст: {adds_table.Rows[i][1]} \nПрошло {adds_table.Rows[i][3]} из {adds_table.Rows[i][4]} часов \n \n";
+                row += $"Заявка №{adds_table.Rows[i][0]} \nТекст: {adds_table.Rows[i][1]} \nПрошло {adds_table.Rows[i][2]} из {adds_table.Rows[i][3]} часов \n \n";
             }
             msg = $"Все доступные заявки \n - - - - - - - -\n{row} ";
         }
         else
-        {
-            myConnection.Close();
+        {            
             msg = "Нет заявок";
         }
-
         Console.WriteLine($"{msg} - - - - - - - -\n");
-
-        Message sentCabinet = await botClient.SendTextMessageAsync(
+        Message sentAdds = await botClient.SendTextMessageAsync(
             chatId: chatId,
             text: $"{msg}",
             replyMarkup: PrkmAdds,
@@ -397,10 +422,10 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                     }
 
                 }
-                if (message.ReplyToMessage.Text == addhours || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd)
+                else if (message.ReplyToMessage.Text == addhours || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd)
                 {
 
-                    if (int.TryParse(message.Text, out int x) == true)
+                    if (int.TryParse(message.Text, out int x))
                     {
                         if (message.ReplyToMessage.Text == addhours)
                         {
@@ -449,7 +474,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                                     Message sentMenu = await botClient.SendTextMessageAsync(
                                         chatId: chatId,
                                         text: $"Статус заявки успешно обновлён!",
-                                        replyMarkup: new ReplyKeyboardRemove(),
+                                        replyMarkup: ArkmCabinet,
                                         cancellationToken: cancellationToken);
                                 }
                                 else
@@ -480,16 +505,24 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
 
             else
             {
-                string msg = "К сожалению, такой команды нет";
+                string msg = "К сожалению, такой команды нет \n Нажмите \"/start\" для перехода в меню";
                 await WrongCommand(chatId, msg, cancellationToken);
             }
         }
+        
         else if(role == 2) {
 
             if (message.Text == "Просмотреть личный кабинет")
             {
                 await PersonalCabinet(message, chatId, cancellationToken);
             }
+
+            else if (message.Text == "Отказаться от заявки")
+            {
+                string update_query = $"update adds set publisher = NULL where publisher = (select id_user from users where username = '{message.Chat.Username}')";
+                ConnectToSQL(update_query);
+                await SentMenu(message, chatId, cancellationToken, "Вы успешно отказались от заявки");
+            } 
 
             else if (message.Text == "Вернуться в меню")
             {
@@ -502,16 +535,77 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                 await ShowAllAvailableAdds(message, chatId, cancellationToken);
             }
 
+            else if (message.Text == "Выбрать заявку для рекламы")
+            {
+                string query = $"select * from adds where publisher = (select id_user from users where username = '{message.Chat.Username}')";
+                myConnection.Open();
+                SqlDataAdapter adpt = new(query, myConnection);
+                DataTable table = new();
+                adpt.Fill(table);
+                myConnection.Close();
+                if (table.Rows.Count == 0)
+                {
+                    Message sentmsg = await botClient.SendTextMessageAsync(
+                    chatId: chatId,
+                    text: "Напишите номер заявки, которую хотите выбрать",
+                    replyMarkup: new ForceReplyMarkup(),
+                    cancellationToken: cancellationToken);
+                }
+                else
+                {
+                    Message sentMenu = await botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: $"Вы не можете выбрать новую заявку, так как уже выбрали другую",
+                        cancellationToken: cancellationToken);
+                    await SentMenu(message, chatId, cancellationToken, "");
+                }
+                
+            }
+
+            else if (message.ReplyToMessage != null)
+            {
+                if (message.ReplyToMessage.Text == "Напишите номер заявки, которую хотите выбрать")
+                {
+                    if (Int32.TryParse(message.Text, out int x))
+                    {
+                        string query = $"select * from adds where id_add = '{message.Text}' and status = 1";
+                        myConnection.Open();
+                        SqlDataAdapter adpt = new(query, myConnection);
+                        DataTable table = new();
+                        adpt.Fill(table);
+                        myConnection.Close();
+                        if (table.Rows.Count != 0)
+                        {
+                            string update_query = $"update adds set publisher = (select id_user from users where username = '{message.Chat.Username}') where id_add = '{message.Text}'";
+                            ConnectToSQL(update_query);
+                            await SentMenu(message, chatId, cancellationToken, $"Вы успешно выбрали заявку №{message.Text}");
+                        }
+                        else
+                        {
+                            Message sentMenu = await botClient.SendTextMessageAsync(
+                                chatId: chatId,
+                                text: $"Такой заявки не существует",
+                                cancellationToken: cancellationToken);
+                            await SentMenu(message, chatId, cancellationToken, "");
+                        }
+                    }
+                    else
+                    {
+                        await WrongData(message, chatId, cancellationToken);
+                    }                               
+                }
+            }
+
             else
             {
-                string msg = "К сожалению, такой команды нет";
+                string msg = "К сожалению, такой команды нет \nНажмите \"/start\" для перехода в меню";
                 await WrongCommand(chatId, msg, cancellationToken);
             }
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex.Message + "\n - - - - - - - - - - ");
+        Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
     }
 }
 
