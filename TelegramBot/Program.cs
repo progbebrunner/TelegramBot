@@ -246,7 +246,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                     {
                         if (message.ReplyToMessage.Text == addhours)
                         {
-                            if (Int32.Parse(message.Text) > 1 && Int32.Parse(message.Text) % 2 == 0)
+                            if (Int32.Parse(message.Text) > 1)
                             {
                                 string query = $"insert into Adds (advertiser, text, status, hours, active_hours) values ((select id_user from users where username = '{message.Chat.Username}'), '{addtxt}', '2', '{Int32.Parse(message.Text)}', '0')";
                                 await ConnectToSQL(query);
@@ -595,7 +595,7 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
         }
         else
         {
-            msg += "   Заявок нет";
+            msg += "   Заявок нет \n";
         }
         Console.WriteLine($"{msg} - - - - - - - -\n");
         await SentCabinet(message, role, chatId, cancellationToken, msg);
@@ -696,32 +696,44 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         DataTable AddsForDel_table = new();
                         if (curr_user.GetRole() == 1)
                         {
-                            string deleteAdvQuery = $"update adds set status = NULL where advertiser = (select id_user from users where username = '{update.CallbackQuery.From.Username}')";
-                            await ConnectToSQL(deleteAdvQuery);
-                            string AddsForDel_query = $"select chatID from users where username = '{update.CallbackQuery.From.Username}'";
+                            string AddsForDel_query = $"select adds.publisher from Adds inner join users on adds.advertiser = users.id_user where (advertiser = (select id_user from users where username = '{update.CallbackQuery.From.Username}')) and (publisher > 0) and (adds.status = 1)";
                             SqlDataAdapter AddsForDel_adpt = new(AddsForDel_query, myConnection);
                             AddsForDel_adpt.Fill(AddsForDel_table);
-                            for (int i = 0; i < AddsForDel_table.Rows.Count; i++)
+                            if (AddsForDel_table.Rows.Count > 0)
                             {
-                                await CommandAndTxt(int.Parse(AddsForDel_table.Rows[i][0].ToString().Trim()), "К сожалению, заявка, к который вы были привязаны, была удалена \n \n Для выбора новой заявки перейдите в меню по команде \" /start\"", cancellationToken);
+                                DataTable msgToPubl_table = new();
+                                for (int i = 0; i < AddsForDel_table.Rows.Count; i++)
+                                {
+                                    string msgToPubl_query = $"select chatID from users where id_user = '{AddsForDel_table.Rows[i][0]}'";
+                                    SqlDataAdapter msgToPubl_adpt = new(msgToPubl_query, myConnection);
+                                    msgToPubl_adpt.Fill(msgToPubl_table);
+                                    await CommandAndTxt(int.Parse(msgToPubl_table.Rows[i][0].ToString().Trim()), "К сожалению, заявка, к который вы были привязаны, была удалена \n \nДля выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken);                                
+                                }
                             }
+                            string deleteAdvQuery = $"update adds set status = 3 where advertiser = (select id_user from users where username = '{update.CallbackQuery.From.Username}')";
+                            await ConnectToSQL(deleteAdvQuery);
+
                         }
                         else if (curr_user.GetRole() == 2)  
                         {
-                            
                             string AddsForDel_query = $"select adds.id_add, adds.status, users.chatID from adds inner join users on adds.advertiser = users.id_user where adds.publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}') and adds.status = 1 ";
                             SqlDataAdapter AddsForDel_adpt = new(AddsForDel_query, myConnection);
                             AddsForDel_adpt.Fill(AddsForDel_table);
-                            Message sentMenu = await botClient.SendTextMessageAsync(
+                            if (AddsForDel_table.Rows.Count > 0)
+                            {
+                                Message sentMenu = await botClient.SendTextMessageAsync(
                                 chatId: int.Parse(AddsForDel_table.Rows[0][2].ToString().Trim()),
-                                text: $"К сожалению, паблишер заявки №{AddsForDel_table.Rows[0][0]} был удалён \n Теперь ваша заявка снова доступна для выбора",
+                                text: $"К сожалению, паблишер заявки №{AddsForDel_table.Rows[0][0]} был удалён \n \nТеперь ваша заявка снова доступна для выбора",
                                 replyMarkup: new ReplyKeyboardRemove(),
                                 cancellationToken: cancellationToken);
+                            }                            
+                            string deleteAdvQuery = $"update adds set publisher = NULL where publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}')";
+                            await ConnectToSQL(deleteAdvQuery);
                         }
                         curr_user.SetRole(0);
-                        string query = $"update users set role = NULL where username = '{update.CallbackQuery.From.Username}'";
+                        string query = $"update users set role = NULL, account = '0' where username = '{update.CallbackQuery.From.Username}'";
                         await ConnectToSQL(query);
-                        await CommandAndTxt(chatId, "Команда подтверждена \nДля активации напишите команду \"/start\"", cancellationToken);
+                        await CommandAndTxt(chatId, "Команда подтверждена \n \nДля активации напишите команду \"/start\"", cancellationToken);
                     }
 
                     else if (update.CallbackQuery.Data == "Отмененено")
