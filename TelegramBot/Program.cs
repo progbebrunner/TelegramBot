@@ -7,8 +7,6 @@ using Telegram.Bot.Types.ReplyMarkups;
 using System.Data.SqlClient;
 using System.Data;
 using TelegramBot;
-using System.Threading;
-using static System.Net.Mime.MediaTypeNames;
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
 
@@ -70,8 +68,7 @@ ReplyKeyboardMarkup PrkmCabinet = new(new[]
 })
 { ResizeKeyboard = true };
 
-InlineKeyboardMarkup ikmConfirmRoleChange = new(
-new[]
+InlineKeyboardMarkup ikmConfirmRoleChange = new(new[]
 {
     InlineKeyboardButton.WithCallbackData("Да", "Подтверждено"),
     InlineKeyboardButton.WithCallbackData("Нет", "Отмененено")
@@ -83,17 +80,18 @@ botClient.StartReceiving(
     receiverOptions: receiverOptions,
     cancellationToken: cts.Token
 );
-//botClient.SetWebhookAsync();
-
-var me = await botClient.GetMeAsync();
+//botClient.SetWebhookAsync("https://f211-188-143-222-213.ngrok-free.app", dropPendingUpdates: true).Wait();
+await botClient.DeleteWebhookAsync();
+User me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
-Console.ReadLine();
-
-void CheckAdds()
+//var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+while (await timer.WaitForNextTickAsync(cts.Token))
 {
-    
+    string query = "select";
 }
+Console.ReadLine();
 
 //Send cancellation request to stop bot
 cts.Cancel();
@@ -101,7 +99,7 @@ cts.Cancel();
 async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationToken cancellationToken)
 {
     try
-    {
+    {        
         if (update.Message is not { } message)
         { return; }
         if (role == 0)
@@ -411,13 +409,11 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                         setadd_adpt.Fill(setadd_table);
                         if (setadd_table.Rows.Count != 0)
                         {
-                            string update_query = $"update adds set publisher = (select id_user from users where username = '{message.Chat.Username}') where id_add = '{message.Text}'";
-                            await ConnectToSQL(update_query);
                             InlineKeyboardMarkup ikmConfirmAdd = new(new[]{
-                                    InlineKeyboardButton.WithCallbackData("Подтвердить заявку", "Подтверждение заявки")});                            
+                                    InlineKeyboardButton.WithCallbackData("Подтвердить заявку", $"Подтверждение заявки №{message.Text}")});                            
                             Message sentConfirmAdd = await botClient.SendTextMessageAsync(
                                 chatId: chatId,
-                                text: $"Вы выбрали заявку №{message.Text} \n \nДля активации внесите текст заявки к себе в описание профиля: \n {setadd_table.Rows[0][0]} \n \nПосле этого нажмите \"Подтвердить заявку\"",
+                                text: $"Вы выбрали заявку №{message.Text} \n \nДля активации внесите текст заявки к себе в описание профиля: \n   \"{setadd_table.Rows[0][0]}\" \n \nПосле этого нажмите \"Подтвердить заявку\"",
                                 replyMarkup: ikmConfirmAdd,
                                 cancellationToken: cancellationToken);                            
                         }
@@ -668,7 +664,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
         switch (update.Type)
         {
             case UpdateType.CallbackQuery:
-                Console.WriteLine($"Received a '{update.CallbackQuery.Data}' message in chat {update.CallbackQuery.From.Id} with @{update.CallbackQuery.From.Username}");
+                Console.WriteLine($"Received a '{update.CallbackQuery.Data}' CallbackQuery in chat {update.CallbackQuery.From.Id} with @{update.CallbackQuery.From.Username}");
                 if (update.CallbackQuery != null)
                 {
                     chatId = update.CallbackQuery.From.Id;
@@ -729,31 +725,25 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                     else if (update.CallbackQuery.Data == "Отмененено")
                     {
                         await SentMenu(curr_user.GetRole(), chatId, cancellationToken, "Команда отменена");
-                        var user_info = await botClient.GetChatAsync(update.CallbackQuery.From.Id);
-                        Console.WriteLine(user_info.Bio);
                     }
 
-                    else if(update.CallbackQuery.Data == "Подтверждение заявки")
+                    else if(update.CallbackQuery.Data.Contains("Подтверждение заявки"))
                     {
-                        string PublDescCheck_query = $"select text, id_add from adds where publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}') and adds.status = 1";
+                        string[] cbqData = update.CallbackQuery.Data.Split(new char[] { '№' }, StringSplitOptions.RemoveEmptyEntries);                        
+                        string PublDescCheck_query = $"select text from adds where id_add = {cbqData[1]}";
                         SqlDataAdapter PublDescCheck_adpt = new(PublDescCheck_query, myConnection);
                         DataTable PublDescCheck_table = new();
                         PublDescCheck_adpt.Fill(PublDescCheck_table);
                         var user_info = await botClient.GetChatAsync(update.CallbackQuery.From.Id, cancellationToken);
-                        if (PublDescCheck_table.Rows.Count > 0)
+                        if (user_info.Bio.Trim().Contains(PublDescCheck_table.Rows[0][0].ToString().Trim()))
                         {
-                            if (PublDescCheck_table.Rows[0][0].ToString().Trim().Contains(user_info.Bio.Trim()))
-                            {
-                                string update_query = $"update adds set publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}') where id_add = '{PublDescCheck_table.Rows[0][0]}'";
-                                await ConnectToSQL(update_query);
-                                await SentMenu(2, chatId, cancellationToken, $"Вы успешно выбрали заявку №{PublDescCheck_table.Rows[0][0]}");
-                            }
-                            else
-                            {
-                                string update_query = $"update adds set publisher = NULL where publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}')";
-                                await ConnectToSQL(update_query);
-                                await CommandAndTxt(chatId, "Вы не внесли текст заявки к себе в описание", cancellationToken);
-                            }
+                            string update_query = $"update adds set publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}') where id_add = '{cbqData[1]}'";
+                            await ConnectToSQL(update_query);
+                            await SentMenu(2, chatId, cancellationToken, $"Вы успешно выбрали заявку №{cbqData[1]}");
+                        }
+                        else
+                        {
+                            await SentMenu(curr_user.GetRole(), chatId, cts.Token, "Вы не внесли текст заявки к себе в описание");
                         }
                     }
                 }
@@ -761,7 +751,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
             case UpdateType.Message:
                 var message = update.Message;
                 chatId = message.Chat.Id;
-                
+                Console.WriteLine($"Received a '{message.Text}' message in chat {message.Chat.Id} with @{message.Chat.Username}");
                 for (int i = 0; i < start_table.Rows.Count; i++)
                 {
                     BotUser old_user = new();
