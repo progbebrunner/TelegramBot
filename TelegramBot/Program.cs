@@ -25,6 +25,7 @@ string addhours = "Сколько часов будет активно объя�
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
 string deleteadd = "Введите номер заявки, которую надо удалить";
+string addmoney = "Введите сумму на которую хотите пополнить счёт";
 SqlConnection myConnection = new("Server=localhost\\SQLEXPRESS03;Database=TgBot;Trusted_Connection=True;");
 DateTime dt_start = DateTime.Now;
 
@@ -42,8 +43,9 @@ ReplyKeyboardMarkup ArkmCabinet = new(new[]
         new KeyboardButton("Приостановить"),
         new KeyboardButton("Удалить")},
     new[]{
-        new KeyboardButton("Выйти"),
-        new KeyboardButton("Вернуться в меню")}
+        new KeyboardButton("Вернуться в меню"),
+        new KeyboardButton("Пополнить счёт"),
+        new KeyboardButton("Выйти")}
 })
 { ResizeKeyboard = true };
 
@@ -203,8 +205,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                 index = Array.IndexOf(users, u);
                                 users[index].SetRole(role);
                             }
-                        }
-                        
+                        }                        
                     }
                 }
                 else
@@ -236,20 +237,18 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 await SentMenu(role, chatId, cancellationToken, greetings);
             }
 
-            else if (message.Text == "Создать новое объявление" || message.Text == "Просмотреть личный кабинет")
+            else if (message.Text == "Создать новое объявление")
             {
-                if (message.Text == "Создать новое объявление")
-                {
-                    Message sentmsg = await botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: $"Введите текст до 70 символов для вашего объявления",
-                    replyMarkup: new ForceReplyMarkup(),
-                    cancellationToken: cancellationToken);
-                }
-                else
-                {
-                    await PersonalCabinet(message, role, chatId, cancellationToken);
-                }
+                Message sentmsg = await botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: $"Введите текст до 70 символов для вашего объявления",
+                replyMarkup: new ForceReplyMarkup(),
+                cancellationToken: cancellationToken);
+            }
+
+            else if(message.Text == "Просмотреть личный кабинет")
+            {
+                await PersonalCabinet(message, role, chatId, cancellationToken);
             }
 
             else if (message.Text == "Вернуться в меню")
@@ -281,6 +280,15 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                         cancellationToken: cancellationToken);
             }
 
+            else if (message.Text == "Пополнить счёт")
+            {
+                Message sentmsg = await botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: $"{addmoney}",
+                replyMarkup: new ForceReplyMarkup(),
+                cancellationToken: cancellationToken);
+            }
+
             else if (message.ReplyToMessage != null)
             {
                 if (message.ReplyToMessage.Text == "Введите текст до 70 символов для вашего объявления")
@@ -301,7 +309,8 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                     }
 
                 }
-                else if (message.ReplyToMessage.Text == addhours || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd)
+
+                else if (message.ReplyToMessage.Text == addhours || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd || message.ReplyToMessage.Text == addmoney)
                 {
 
                     if (int.TryParse(message.Text, out int x))
@@ -335,6 +344,15 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                 await WrongData(message, role, chatId, cancellationToken);
                             }
                         }
+
+                        else if (message.ReplyToMessage.Text == addmoney)
+                        {
+                            string addmoney_q = $"update users set account = account + {int.Parse(message.Text)} where username = '{message.Chat.Username}'";
+                            await ConnectToSQL(addmoney_q);
+                            await SentCabinet(role, chatId, cancellationToken, "Средства успешно добавлены на счёт");
+                            await PersonalCabinet(message, role, chatId, cancellationToken);
+                        }
+
                         else
                         {
                             string setstatus_query = $"select status from adds where id_add = '{message.Text}'";
