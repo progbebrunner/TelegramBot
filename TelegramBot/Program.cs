@@ -258,14 +258,14 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 await SentMenu(role, chatId, cancellationToken, msg);
             }
 
-            else if (message.Text == "Активировать заявку" || message.Text == "Приостановить заявку" || message.Text == "Удалить заявку")
+            else if (message.Text == "Активировать" || message.Text == "Приостановить" || message.Text == "Удалить")
             {
                 string action = "";
-                if (message.Text == "Активировать заявку")
+                if (message.Text == "Активировать")
                 {
                     action = "активировать";
                 }
-                else if (message.Text == "Приостановить заявку")
+                else if (message.Text == "Приостановить")
                 {
                     action = "приостановить";
                 }
@@ -349,17 +349,27 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                     if (message.ReplyToMessage.Text == activateadd)
                                     {
                                         secquery = $"update adds set status = '1' where id_add = '{message.Text}'";
+                                        await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
                                     }
                                     else if (message.ReplyToMessage.Text == stopadd)
                                     {
                                         secquery = $"update adds set status = '2' where id_add = '{message.Text}'";
+                                        await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
                                     }
                                     else
                                     {
                                         secquery = $"update adds set status = '3' where id_add = '{message.Text}'";
+                                        await SentCabinet(role, chatId, cancellationToken, "Заявка была успешно удалена!");
+                                        string SendNoteToP_q = $"select chatId from adds inner join users on adds.publisher = users.id_user where id_add = {message.Text}";
+                                        SqlDataAdapter SendNoteToP_adpt = new(SendNoteToP_q, myConnection);
+                                        DataTable SendNoteToP_table = new();
+                                        SendNoteToP_adpt.Fill(SendNoteToP_table);
+                                        if (SendNoteToP_table.Rows.Count != 0)
+                                        {
+                                            await CommandAndTxt(int.Parse(SendNoteToP_table.Rows[0][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была удалена \n \n Для выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken)
+                                        }
                                     }
                                     await ConnectToSQL(secquery);
-                                    await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
                                 }
                                 else
                                 {
@@ -816,15 +826,22 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         var dt_now = DateTime.Now;
                         var last_check = new DateTime(dt_now.Year, dt_now.Month, dt_now.Day, dt_now.Hour, dt_now.Hour, 0);
                         var user_info = await botClient.GetChatAsync(update.CallbackQuery.From.Id, cancellationToken);
-                        if (user_info.Bio.Trim().ToLower().Contains(PublDescCheck_table.Rows[0][0].ToString().Trim().ToLower()))
+                        if (user_info.Bio != null)
                         {
-                            string update_query = $"update adds set publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}'), last_check = '{last_check}' where id_add = '{cbqData[1]}'";
-                            await ConnectToSQL(update_query);
-                            await SentMenu(2, chatId, cancellationToken, $"Вы успешно выбрали заявку №{cbqData[1]}");
+                            if (user_info.Bio.Trim().ToLower().Contains(PublDescCheck_table.Rows[0][0].ToString().Trim().ToLower()))
+                            {
+                                string update_query = $"update adds set publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}'), last_check = '{last_check}' where id_add = '{cbqData[1]}'";
+                                await ConnectToSQL(update_query);
+                                await SentMenu(2, chatId, cancellationToken, $"Вы успешно выбрали заявку №{cbqData[1]}");
+                            }
+                            else
+                            {
+                                await SentMenu(curr_user.GetRole(), chatId, cts.Token, "Вы не внесли текст заявки к себе в описание");
+                            }
                         }
                         else
                         {
-                            await SentMenu(curr_user.GetRole(), chatId, cts.Token, "Вы не внесли текст заявки к себе в описание");
+                            await SentMenu(curr_user.GetRole(), chatId, cts.Token, "У вас пустое описание");
                         }
                     }
                 }
