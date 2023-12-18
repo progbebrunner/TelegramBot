@@ -366,7 +366,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                         SendNoteToP_adpt.Fill(SendNoteToP_table);
                                         if (SendNoteToP_table.Rows.Count != 0)
                                         {
-                                            await CommandAndTxt(int.Parse(SendNoteToP_table.Rows[0][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была удалена \n \n Для выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken)
+                                            await CommandAndTxt(int.Parse(SendNoteToP_table.Rows[0][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была удалена \n \n Для выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken);
                                         }
                                     }
                                     await ConnectToSQL(secquery);
