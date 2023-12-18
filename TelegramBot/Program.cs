@@ -7,6 +7,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 using System.Data.SqlClient;
 using System.Data;
 using TelegramBot;
+using Telegram.Bot.Requests;
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
 
@@ -25,6 +26,7 @@ string activateadd = "Введите номер заявки, которую н�
 string stopadd = "Введите номер заявки, которую надо приостановить";
 string deleteadd = "Введите номер заявки, которую надо удалить";
 SqlConnection myConnection = new("Server=localhost\\SQLEXPRESS03;Database=TgBot;Trusted_Connection=True;");
+DateTime dt_start = DateTime.Now;
 
 
 ReplyKeyboardMarkup ArkmMenu = new(new[]
@@ -68,12 +70,6 @@ ReplyKeyboardMarkup PrkmCabinet = new(new[]
 })
 { ResizeKeyboard = true };
 
-InlineKeyboardMarkup ikmConfirmRoleChange = new(new[]
-{
-    InlineKeyboardButton.WithCallbackData("Да", "Подтверждено"),
-    InlineKeyboardButton.WithCallbackData("Нет", "Отмененено")
-});
-
 botClient.StartReceiving(
     updateHandler: HandleUpdateAsync,
     pollingErrorHandler: HandlePollingErrorAsync,
@@ -85,16 +81,83 @@ await botClient.DeleteWebhookAsync();
 User me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
-//var timer = new PeriodicTimer(TimeSpan.FromHours(1));
-var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
+await CheckAdds();
 while (await timer.WaitForNextTickAsync(cts.Token))
 {
-    string query = "select";
+    await CheckAdds();
 }
 Console.ReadLine();
 
 //Send cancellation request to stop bot
 cts.Cancel();
+
+async Task CheckAdds()
+{
+    try
+    {
+        if (myConnection.State == ConnectionState.Open || myConnection.State == ConnectionState.Connecting)
+        {
+            await myConnection.CloseAsync();
+        }
+        await myConnection.OpenAsync(cts.Token);
+        string CheckAdds_q = "select id_add, text, hours, active_hours, last_check, chatId from adds inner join users on adds.publisher = users.id_user where status = 1 and publisher > 0";
+        SqlDataAdapter CheckAdds_adpt = new(CheckAdds_q, myConnection);
+        DataTable CheckAdds_tbl = new();
+        CheckAdds_adpt.Fill(CheckAdds_tbl);
+        if (CheckAdds_tbl.Rows.Count > 0)
+        {
+            for (int i = 0; i < CheckAdds_tbl.Rows.Count; i++)
+            {
+                if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim())) >= TimeSpan.Parse("00:30:00"))
+                {
+                    var user_info = await botClient.GetChatAsync(int.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), cts.Token);
+                    if (user_info.Bio.Trim().ToLower().Contains(CheckAdds_tbl.Rows[i][1].ToString().Trim().ToLower()))
+                    {
+                        var dt_now = DateTime.Now;
+                        var last_check = new DateTime(dt_now.Year, dt_now.Month, dt_now.Day, dt_now.Hour, dt_now.Minute, 0);
+
+                        string upd_q = $"update adds set active_hours = active_hours + 1, last_check = '{last_check}' where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+                        await ConnectToSQL(upd_q);
+                        string upd_publ_q = $"update users set account = account + 90";
+                        await ConnectToSQL(upd_publ_q);
+                    }
+                    else
+                    {
+                        string upd_publ = $"update adds set publisher = NULL where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+                        await ConnectToSQL(upd_publ);
+                        await CommandAndTxt(int.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), $"Так вы убрали текст заявки №{CheckAdds_tbl.Rows[i][0].ToString().Trim()}, то вы больше не привязаны к ней", cts.Token);
+                        string SendNote_q = $"select id_add, chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+                        SqlDataAdapter SendNote_adpt = new(SendNote_q, myConnection);
+                        DataTable SendNote_tbl = new();
+                        CheckAdds_adpt.Fill(CheckAdds_tbl);
+                        await CommandAndTxt(int.Parse(SendNote_tbl.Rows[0][1].ToString().Trim()), $"Заявка №{CheckAdds_tbl.Rows[i][0].ToString().Trim()} теперь снова доступна для выбора, так как Паблишер не выполнил условия продления", cts.Token);
+                    }
+                }
+            }
+        }
+
+        string CompletedAdds_q = "select id_add, hours, active_hours, chatId from adds inner join users on adds.advertiser = users.id_user where status = '1' and publisher > 0 and hours = active_hours";
+        SqlDataAdapter CompletedAdds_adpt = new(CompletedAdds_q, myConnection);
+        DataTable CompletedAdds_tbl = new();
+        CompletedAdds_adpt.Fill(CompletedAdds_tbl);
+        if (CompletedAdds_tbl.Rows.Count > 0)
+        {
+            for (int i = 0; i < CompletedAdds_tbl.Rows.Count; i++)
+            {
+                string upd_publ = $"update adds set status = 3 where id_add = {int.Parse(CompletedAdds_tbl.Rows[i][0].ToString().Trim())}";
+                await ConnectToSQL(upd_publ);
+                await CommandAndTxt(int.Parse(CompletedAdds_tbl.Rows[i][3].ToString().Trim()), $"Заявка №{CompletedAdds_tbl.Rows[i][0].ToString().Trim()} закончила свою работу", cts.Token);
+            }
+        }
+        myConnection.Close();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
+    }
+    
+}
 
 async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationToken cancellationToken)
 {
@@ -320,7 +383,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Выйти")
             {
-                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти? \n \n Все ваши заявки будут удалены");
+                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти? \n \n Все ваши заявки будут удалены", message.MessageId);
             }
 
             else
@@ -377,7 +440,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Выбрать заявку для рекламы")
             {
-                string chooseadd_query = $"select * from adds where publisher = (select id_user from users where username = '{message.Chat.Username}')";
+                string chooseadd_query = $"select * from adds where publisher = (select id_user from users where username = '{message.Chat.Username}') and status <> 3";
                 SqlDataAdapter chooseadd_adpt = new(chooseadd_query, myConnection);
                 DataTable chooseadd_table = new();
                 chooseadd_adpt.Fill(chooseadd_table);
@@ -409,13 +472,11 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                         setadd_adpt.Fill(setadd_table);
                         if (setadd_table.Rows.Count != 0)
                         {
-                            InlineKeyboardMarkup ikmConfirmAdd = new(new[]{
-                                    InlineKeyboardButton.WithCallbackData("Подтвердить заявку", $"Подтверждение заявки №{message.Text}")});                            
                             Message sentConfirmAdd = await botClient.SendTextMessageAsync(
                                 chatId: chatId,
                                 text: $"Вы выбрали заявку №{message.Text} \n \nДля активации внесите текст заявки к себе в описание профиля: \n   \"{setadd_table.Rows[0][0]}\" \n \nПосле этого нажмите \"Подтвердить заявку\"",
-                                replyMarkup: ikmConfirmAdd,
-                                cancellationToken: cancellationToken);                            
+                                replyMarkup: new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("Подтвердить заявку", $"Подтверждение заявки_{message.Text}_{message.MessageId}")),
+                                cancellationToken: cancellationToken);
                         }
                         else
                         {
@@ -432,7 +493,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Выйти")
             {
-                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти?");
+                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти?", message.MessageId);
             }
 
             else
@@ -448,11 +509,18 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
     }    
 }
 
-async Task SentConfirm(long chatId, CancellationToken cancellationToken, string txt){
-    Message sentMenu = await botClient.SendTextMessageAsync(
+async Task SentConfirm(long chatId, CancellationToken cancellationToken, string txt, int msgID){
+
+    Message? sentMenu = null;
+    InlineKeyboardMarkup ikmSentConfim = new(new[]
+    {
+        InlineKeyboardButton.WithCallbackData("Да", $"Подтверждено_{msgID}"),
+        InlineKeyboardButton.WithCallbackData("Нет", $"Отмененено_{msgID}")
+    });
+    sentMenu = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: $"{txt}",
-        replyMarkup: ikmConfirmRoleChange,
+        replyMarkup: ikmSentConfim,
         cancellationToken: cancellationToken);
 }
 
@@ -653,9 +721,12 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
         DataTable start_table = new();
         if (users.Length == 0)
         {
-            string start_query = $"select username, role, chatID from users";
-            myConnection.Close();
+            if (myConnection.State == ConnectionState.Open || myConnection.State == ConnectionState.Connecting)
+            {
+                await myConnection.CloseAsync();
+            }
             await myConnection.OpenAsync(cancellationToken);
+            string start_query = $"select username, role, chatID from users";
             SqlDataAdapter start_adpt = new(start_query, myConnection);           
             start_adpt.Fill(start_table);
             Array.Resize(ref users, start_table.Rows.Count);
@@ -676,8 +747,11 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                             curr_user = user;
                         }
                     }
-                    if (update.CallbackQuery.Data == "Подтверждено")
+                    if (update.CallbackQuery.Data.Contains("Подтверждено"))
                     {
+                        string[] cbqData = update.CallbackQuery.Data.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+                        string msgID = cbqData[1];
+                        await botClient.EditMessageReplyMarkupAsync(update.CallbackQuery.From.Id, int.Parse(msgID) + 1, null, cancellationToken);
                         DataTable AddsForDel_table = new();
                         if (curr_user.GetRole() == 1)
                         {
@@ -722,22 +796,29 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         await CommandAndTxt(chatId, "Команда подтверждена \n \nДля активации напишите команду \"/start\"", cancellationToken);
                     }
 
-                    else if (update.CallbackQuery.Data == "Отмененено")
+                    else if (update.CallbackQuery.Data.Contains("Отмененено"))
                     {
+                        string[] cbqData = update.CallbackQuery.Data.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+                        string msgID = cbqData[1];
+                        await botClient.EditMessageReplyMarkupAsync(update.CallbackQuery.From.Id, int.Parse(msgID) + 1, null, cancellationToken);
                         await SentMenu(curr_user.GetRole(), chatId, cancellationToken, "Команда отменена");
                     }
 
                     else if(update.CallbackQuery.Data.Contains("Подтверждение заявки"))
                     {
-                        string[] cbqData = update.CallbackQuery.Data.Split(new char[] { '№' }, StringSplitOptions.RemoveEmptyEntries);                        
+                        string[] cbqData = update.CallbackQuery.Data.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+                        string msgID = cbqData[2];
+                        await botClient.EditMessageReplyMarkupAsync(update.CallbackQuery.From.Id, int.Parse(msgID) + 1, null, cancellationToken);
                         string PublDescCheck_query = $"select text from adds where id_add = {cbqData[1]}";
                         SqlDataAdapter PublDescCheck_adpt = new(PublDescCheck_query, myConnection);
                         DataTable PublDescCheck_table = new();
                         PublDescCheck_adpt.Fill(PublDescCheck_table);
+                        var dt_now = DateTime.Now;
+                        var last_check = new DateTime(dt_now.Year, dt_now.Month, dt_now.Day, dt_now.Hour, dt_now.Hour, 0);
                         var user_info = await botClient.GetChatAsync(update.CallbackQuery.From.Id, cancellationToken);
-                        if (user_info.Bio.Trim().Contains(PublDescCheck_table.Rows[0][0].ToString().Trim()))
+                        if (user_info.Bio.Trim().ToLower().Contains(PublDescCheck_table.Rows[0][0].ToString().Trim().ToLower()))
                         {
-                            string update_query = $"update adds set publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}') where id_add = '{cbqData[1]}'";
+                            string update_query = $"update adds set publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}'), last_check = '{last_check}' where id_add = '{cbqData[1]}'";
                             await ConnectToSQL(update_query);
                             await SentMenu(2, chatId, cancellationToken, $"Вы успешно выбрали заявку №{cbqData[1]}");
                         }
@@ -751,52 +832,56 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
             case UpdateType.Message:
                 var message = update.Message;
                 chatId = message.Chat.Id;
-                Console.WriteLine($"Received a '{message.Text}' message in chat {message.Chat.Id} with @{message.Chat.Username}");
-                for (int i = 0; i < start_table.Rows.Count; i++)
+                int result = DateTime.Compare(message.Date, dt_start);
+                if (result < 0  )
                 {
-                    BotUser old_user = new();
-                    old_user.SetUsername(start_table.Rows[i][0].ToString());
-                    if (int.TryParse(start_table.Rows[i][1].ToString().Trim(), out int x))
+                    Console.WriteLine($"Received a '{message.Text}' message in chat {message.Chat.Id} with @{message.Chat.Username}");
+                    for (int i = 0; i < start_table.Rows.Count; i++)
                     {
-                        old_user.SetRole(int.Parse(start_table.Rows[i][1].ToString().Trim()));
-                    }
-                    else
-                    {
-                        old_user.SetRole(0);
-                    }
-                    old_user.SetChatId(int.Parse(start_table.Rows[i][2].ToString().Trim()));
-                    users[i] = old_user;
-
-                }
-                int count = 0;
-                foreach (BotUser user in users)
-                {
-                    if (user.GetUsername() == message.Chat.Username)
-                    {
-                        if (user.GetRole() == 1)
+                        BotUser old_user = new();
+                        old_user.SetUsername(start_table.Rows[i][0].ToString());
+                        if (int.TryParse(start_table.Rows[i][1].ToString().Trim(), out int x))
                         {
-                            await TgBotProgramm(update, user.GetRole(), chatId, cancellationToken);
-                            count++;
-                            break;
-                        }
-                        else if (user.GetRole() == 2)
-                        {
-                            await TgBotProgramm(update, user.GetRole(), chatId, cancellationToken);
-                            count++;
-                            break;
+                            old_user.SetRole(int.Parse(start_table.Rows[i][1].ToString().Trim()));
                         }
                         else
                         {
-                            await TgBotProgramm(update, 0, chatId, cancellationToken);
-                            count++;
-                            break;
+                            old_user.SetRole(0);
+                        }
+                        old_user.SetChatId(int.Parse(start_table.Rows[i][2].ToString().Trim()));
+                        users[i] = old_user;
+
+                    }
+                    int count = 0;
+                    foreach (BotUser user in users)
+                    {
+                        if (user.GetUsername() == message.Chat.Username)
+                        {
+                            if (user.GetRole() == 1)
+                            {
+                                await TgBotProgramm(update, user.GetRole(), chatId, cancellationToken);
+                                count++;
+                                break;
+                            }
+                            else if (user.GetRole() == 2)
+                            {
+                                await TgBotProgramm(update, user.GetRole(), chatId, cancellationToken);
+                                count++;
+                                break;
+                            }
+                            else
+                            {
+                                await TgBotProgramm(update, 0, chatId, cancellationToken);
+                                count++;
+                                break;
+                            }
                         }
                     }
-                }
-                if (count == 0)
-                {
-                    await TgBotProgramm(update, 0, chatId, cancellationToken);
-                }
+                    if (count == 0)
+                    {
+                        await TgBotProgramm(update, 0, chatId, cancellationToken);
+                    }
+                }                
                 break;
         }
     }
