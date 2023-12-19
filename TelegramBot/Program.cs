@@ -21,7 +21,7 @@ ReceiverOptions receiverOptions = new()
 BotUser[] users = Array.Empty<BotUser>();
 string addtxt = "";
 string menuanswer = " \n \nЧто вы хотите сделать?";
-string addhours = "Сколько часов будет активно объявление? \nКоличество часов должно быть целым числом";
+string addhours = "Сколько дней будет активно объявление? \nКоличество дней должно быть целым числом";
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
 string deleteadd = "Введите номер заявки, которую надо удалить";
@@ -83,7 +83,7 @@ await botClient.DeleteWebhookAsync();
 User me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
-var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
+var timer = new PeriodicTimer(TimeSpan.FromHours(1));
 await CheckAdds();
 while (await timer.WaitForNextTickAsync(cts.Token))
 {
@@ -113,7 +113,7 @@ async Task CheckAdds()
             {
                 if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim())) >= TimeSpan.Parse("00:30:00"))
                 {
-                    var user_info = await botClient.GetChatAsync(int.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), cts.Token);
+                    var user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), cts.Token);
                     if (user_info.Bio.Trim().ToLower().Contains(CheckAdds_tbl.Rows[i][1].ToString().Trim().ToLower()))
                     {
                         var dt_now = DateTime.Now;
@@ -355,7 +355,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
                         else
                         {
-                            string setstatus_query = $"select status from adds where id_add = '{message.Text}'";
+                            string setstatus_query = $"select status from adds where id_add = '{message.Text}' and advertiser = (select id_user from users where username = '{message.Chat.Username}')";
                             SqlDataAdapter setstatus_adpt = new(setstatus_query, myConnection);
                             DataTable setstatus_table = new();
                             setstatus_adpt.Fill(setstatus_table);
@@ -369,22 +369,30 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                         secquery = $"update adds set status = '1' where id_add = '{message.Text}'";
                                         await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
                                     }
-                                    else if (message.ReplyToMessage.Text == stopadd)
-                                    {
-                                        secquery = $"update adds set status = '2' where id_add = '{message.Text}'";
-                                        await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
-                                    }
                                     else
                                     {
-                                        secquery = $"update adds set status = '3' where id_add = '{message.Text}'";
-                                        await SentCabinet(role, chatId, cancellationToken, "Заявка была успешно удалена!");
+                                        string action = "";
+                                        if (message.ReplyToMessage.Text == stopadd)
+                                        {
+                                            action = "пристановлена";
+                                            secquery = $"update adds set status = '2' where id_add = '{message.Text}'";
+                                            await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
+                                            string upd_p = $"update adds set publisher = NULL where id_add = {message.Text}";
+                                            await ConnectToSQL(upd_p);
+                                        }
+                                        else
+                                        {
+                                            action = "удалена";
+                                            secquery = $"update adds set status = '3' where id_add = '{message.Text}'";
+                                            await SentCabinet(role, chatId, cancellationToken, "Заявка была успешно удалена!");
+                                        }
                                         string SendNoteToP_q = $"select chatId from adds inner join users on adds.publisher = users.id_user where id_add = {message.Text}";
                                         SqlDataAdapter SendNoteToP_adpt = new(SendNoteToP_q, myConnection);
                                         DataTable SendNoteToP_table = new();
                                         SendNoteToP_adpt.Fill(SendNoteToP_table);
                                         if (SendNoteToP_table.Rows.Count != 0)
                                         {
-                                            await CommandAndTxt(int.Parse(SendNoteToP_table.Rows[0][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была удалена \n \n Для выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken);
+                                            await CommandAndTxt(int.Parse(SendNoteToP_table.Rows[0][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была {action} \n \n Для выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken);
                                         }
                                     }
                                     await ConnectToSQL(secquery);
@@ -883,7 +891,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         {
                             old_user.SetRole(0);
                         }
-                        old_user.SetChatId(int.Parse(start_table.Rows[i][2].ToString().Trim()));
+                        old_user.SetChatId(long.Parse(start_table.Rows[i][2].ToString().Trim()));
                         users[i] = old_user;
 
                     }
