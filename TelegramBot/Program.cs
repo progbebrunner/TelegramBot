@@ -8,6 +8,8 @@ using System.Data.SqlClient;
 using System.Data;
 using TelegramBot;
 using Telegram.Bot.Requests;
+using System;
+using System.Threading;
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
 
@@ -21,11 +23,13 @@ ReceiverOptions receiverOptions = new()
 BotUser[] users = Array.Empty<BotUser>();
 string addtxt = "";
 string menuanswer = " \n \nЧто вы хотите сделать?";
-string addhours = "Сколько дней будет активно объявление? \nКоличество дней должно быть целым числом";
+string entertxt = "Ответом на это сообщение, введите текст до 70 символов для вашего объявления";
+string adddays = "Сколько дней будет активно объявление? \nКоличество дней должно быть целым числом";
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
 string deleteadd = "Введите номер заявки, которую надо удалить";
 string addmoney = "Введите сумму на которую хотите пополнить счёт";
+string chooseadd = "Ответом на это сообщение, напишите номер заявки, которую хотите выбрать";
 SqlConnection myConnection = new("Server=localhost\\SQLEXPRESS03;Database=TgBot;Trusted_Connection=True;");
 DateTime dt_start = DateTime.Now;
 
@@ -83,7 +87,7 @@ await botClient.DeleteWebhookAsync();
 User me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
-var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
 await CheckAdds();
 while (await timer.WaitForNextTickAsync(cts.Token))
 {
@@ -111,7 +115,7 @@ async Task CheckAdds()
         {
             for (int i = 0; i < CheckAdds_tbl.Rows.Count; i++)
             {
-                if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim())) >= TimeSpan.Parse("00:30:00"))
+                if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim())) >= TimeSpan.Parse("01:00:00"))
                 {
                     var user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), cts.Token);
                     if (user_info.Bio.Trim().ToLower().Contains(CheckAdds_tbl.Rows[i][1].ToString().Trim().ToLower()))
@@ -153,6 +157,7 @@ async Task CheckAdds()
             }
         }
         myConnection.Close();
+        Console.WriteLine($" - - - - - - - - - - \n Была проведена проверка всех активных заявок в {DateTime.Now}\n - - - - - - - - - - ");
     }
     catch (Exception ex)
     {
@@ -224,7 +229,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
             }
             else
             {
-                string msg = "Для начала работы с ботом напишите \"/start\"";
+                string msg = "Вы не выбрали роль \nДля начала работы с ботом напишите \"/start\"";
                 await CommandAndTxt(chatId, msg, cancellationToken);
             }
         }
@@ -241,7 +246,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
             {
                 Message sentmsg = await botClient.SendTextMessageAsync(
                 chatId: chatId,
-                text: $"Введите текст до 70 символов для вашего объявления",
+                text: entertxt,
                 replyMarkup: new ForceReplyMarkup(),
                 cancellationToken: cancellationToken);
             }
@@ -291,7 +296,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.ReplyToMessage != null)
             {
-                if (message.ReplyToMessage.Text == "Введите текст до 70 символов для вашего объявления")
+                if (message.ReplyToMessage.Text == entertxt)
                 {
                     if (message.Text.Length <= 70)
                     {
@@ -299,7 +304,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
                         Message sentmsg = await botClient.SendTextMessageAsync(
                             chatId: chatId,
-                            text: addhours,
+                            text: adddays,
                             replyMarkup: new ForceReplyMarkup(),
                             cancellationToken: cancellationToken);
                     }
@@ -310,12 +315,12 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
                 }
 
-                else if (message.ReplyToMessage.Text == addhours || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd || message.ReplyToMessage.Text == addmoney)
+                else if (message.ReplyToMessage.Text == adddays || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd || message.ReplyToMessage.Text == addmoney)
                 {
 
                     if (int.TryParse(message.Text, out int x))
                     {
-                        if (message.ReplyToMessage.Text == addhours)
+                        if (message.ReplyToMessage.Text == adddays)
                         {
                             if (int.Parse(message.Text) > 1)
                             {
@@ -324,11 +329,11 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                 SqlDataAdapter accCheck_adpt = new(accCheck_query, myConnection);
                                 DataTable accCheck_table = new();
                                 accCheck_adpt.Fill(accCheck_table);
-                                if (int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) >= int.Parse(message.Text.Trim()) * 100)
+                                if (int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) >= int.Parse(message.Text.Trim()) * 100 * 24)
                                 {
-                                    string query = $"insert into Adds (advertiser, text, status, hours, active_hours) values ((select id_user from users where username = '{message.Chat.Username}'), '{addtxt}', '2', '{int.Parse(message.Text)}', '0')";
+                                    string query = $"insert into Adds (advertiser, text, status, hours, active_hours) values ((select id_user from users where username = '{message.Chat.Username}'), '{addtxt}', '2', '{int.Parse(message.Text) * 24}', '0')";
                                     await ConnectToSQL(query);
-                                    query = $"update users set account = '{int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) - (int.Parse(message.Text.Trim()) * 100)}' where username = '{message.Chat.Username}'";
+                                    query = $"update users set account = '{int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) - (int.Parse(message.Text.Trim()) * 100 * 24)}' where username = '{message.Chat.Username}'";
                                     await ConnectToSQL(query);
                                     msg = $"Объявление успешно создано";
                                 }
@@ -347,10 +352,19 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
                         else if (message.ReplyToMessage.Text == addmoney)
                         {
-                            string addmoney_q = $"update users set account = account + {int.Parse(message.Text)} where username = '{message.Chat.Username}'";
-                            await ConnectToSQL(addmoney_q);
-                            await SentCabinet(role, chatId, cancellationToken, "Средства успешно добавлены на счёт");
-                            await PersonalCabinet(message, role, chatId, cancellationToken);
+                            if (int.Parse(message.Text) >= 0)
+                            {
+
+                                string addmoney_q = $"update users set account = account + {int.Parse(message.Text)} where username = '{message.Chat.Username}'";
+                                await ConnectToSQL(addmoney_q);
+                                await SentCabinet(role, chatId, cancellationToken, "Средства успешно добавлены на счёт");
+                                await PersonalCabinet(message, role, chatId, cancellationToken);
+                            }
+                            else
+                            {
+                                await CommandAndTxt(chatId, "Количество средств, на которое вы хотите пополнить счёт, должно быть не меньше 0", cancellationToken);
+                                await PersonalCabinet(message, role, chatId, cancellationToken);
+                            }
                         }
 
                         else
@@ -399,7 +413,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                 }
                                 else
                                 {
-                                    await CommandAndTxt(chatId, "Эта заявка была удалена", cancellationToken);
+                                    await CommandAndTxt(chatId, "Такой заявки не существуе", cancellationToken);
                                 }
                             }
                             else
@@ -455,6 +469,15 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                     string update_query = $"update adds set publisher = NULL where publisher = (select id_user from users where username = '{message.Chat.Username}')";
                     await ConnectToSQL(update_query);
                     await SentMenu(role, chatId, cancellationToken, "Вы успешно отказались от заявки");
+                    string SendNoteToAdv_q = $"select chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {message.Text}";
+                    SqlDataAdapter SendNoteToAdv_adpt = new(SendNoteToAdv_q, myConnection);
+                    DataTable SendNoteToAdv_table = new();
+                    SendNoteToAdv_adpt.Fill(SendNoteToAdv_table);
+                    if (SendNoteToAdv_table.Rows.Count != 0)
+                    {
+                        await CommandAndTxt(int.Parse(SendNoteToAdv_table.Rows[0][0].ToString().Trim()), $"К сожалению, паблишер отказался заявки №{message.Text}", cancellationToken);
+                    }
+
                 }
                 else
                 {
@@ -484,7 +507,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 {
                     Message sentmsg = await botClient.SendTextMessageAsync(
                     chatId: chatId,
-                    text: "Напишите номер заявки, которую хотите выбрать",
+                    text: chooseadd,
                     replyMarkup: new ForceReplyMarkup(),
                     cancellationToken: cancellationToken);
                 }
@@ -498,7 +521,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.ReplyToMessage != null)
             {
-                if (message.ReplyToMessage.Text == "Напишите номер заявки, которую хотите выбрать")
+                if (message.ReplyToMessage.Text == chooseadd)
                 {
                     if (int.TryParse(message.Text, out int x))
                     {
@@ -529,7 +552,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Выйти")
             {
-                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти?", message.MessageId);
+                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти? \nВы будете удалены с выбранной заявки, если таковая есть", message.MessageId);
             }
 
             else
@@ -670,7 +693,7 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
         {
             role_str = "publisher";
         }
-        string pc_query = $"select adds.id_add, adds.text, addstatus.status, adds.publisher,adds.active_hours, adds.hours, adds.status, users.account from adds inner join addstatus on adds.status = addstatus.id_status inner join users on adds.{role_str} = users.id_user where adds.{role_str} = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> '3'";
+        string pc_query = $"select adds.id_add, adds.text, addstatuses.status, adds.publisher, adds.active_hours, adds.hours, adds.status, users.account from adds inner join addstatuses on adds.status = addstatuses.id_status inner join users on adds.{role_str} = users.id_user where adds.{role_str} = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> '3'";
         SqlDataAdapter pc_adpt = new(pc_query, myConnection);
         DataTable pc_table = new();
         pc_adpt.Fill(pc_table);
@@ -688,7 +711,7 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
             string publisher = "Отсутствует";
             for (int i = 0; i < pc_table.Rows.Count; i++)
             {
-                if (pc_table.Rows[i][0] != null)
+                if (pc_table.Rows[i][3].ToString().Trim() != "")
                 {
                     publisher = "Есть";
                 }
@@ -924,7 +947,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                     {
                         await TgBotProgramm(update, 0, chatId, cancellationToken);
                     }
-                }                
+                }
                 break;
         }
     }
@@ -948,3 +971,5 @@ Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, 
 }
 
 Console.ReadLine();
+
+
