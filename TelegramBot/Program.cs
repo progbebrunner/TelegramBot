@@ -24,6 +24,7 @@ BotUser[] users = Array.Empty<BotUser>();
 string addtxt = "";
 string menuanswer = " \n \nЧто вы хотите сделать?";
 string entertxt = "Ответом на это сообщение, введите текст до 70 символов для вашего объявления";
+string payrate = "Выберите тариф для вашего объявления: \n \n Базовый: до 5 паблишеров за 500 ед/день  \nСредний: до 15 паблишеров за 750 ед/день \nРасширенный: до 30 паблишеров за 1250 ед/день \nМаксимум: до 50 паблишеро за 2000 ед/день";
 string adddays = "Сколько дней будет активно объявление? \nКоличество дней должно быть целым числом";
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
@@ -38,6 +39,16 @@ ReplyKeyboardMarkup ArkmMenu = new(new[]
 {
     new KeyboardButton("Создать новое объявление"),
     new KeyboardButton("Просмотреть личный кабинет"),
+})
+{ ResizeKeyboard = true };
+ReplyKeyboardMarkup ArkmPayRate = new(new[]
+{
+    new[]{
+        new KeyboardButton("Базовый"),
+        new KeyboardButton("Средний")},
+    new[]{
+        new KeyboardButton("Расширенный"),
+        new KeyboardButton("Максимум")}
 })
 { ResizeKeyboard = true };
 ReplyKeyboardMarkup ArkmCabinet = new(new[]
@@ -304,8 +315,8 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
                         Message sentmsg = await botClient.SendTextMessageAsync(
                             chatId: chatId,
-                            text: adddays,
-                            replyMarkup: new ForceReplyMarkup(),
+                            text: payrate,
+                            replyMarkup: ArkmPayRate,
                             cancellationToken: cancellationToken);
                     }
                     else
