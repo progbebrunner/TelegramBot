@@ -24,14 +24,14 @@ BotUser[] users = Array.Empty<BotUser>();
 string addtxt = "";
 string menuanswer = " \n \nЧто вы хотите сделать?";
 string entertxt = "Ответом на это сообщение, введите текст до 70 символов для вашего объявления";
-string payrate = "Выберите тариф для вашего объявления: \n \n Базовый: до 5 паблишеров за 500 ед/день  \nСредний: до 15 паблишеров за 750 ед/день \nРасширенный: до 30 паблишеров за 1250 ед/день \nМаксимум: до 50 паблишеро за 2000 ед/день";
+string payrate = "Выберите тариф для вашего объявления: \n \n   1. Базовый: до 5 паблишеров за 500 ед/день  \n   2. Средний: до 15 паблишеров за 750 ед/день \n   3. Расширенный: до 30 паблишеров за 1250 ед/день \n   4. Максимум: до 50 паблишеро за 2000 ед/день";
 string adddays = "Сколько дней будет активно объявление? \nКоличество дней должно быть целым числом";
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
 string deleteadd = "Введите номер заявки, которую надо удалить";
 string addmoney = "Введите сумму на которую хотите пополнить счёт";
 string chooseadd = "Ответом на это сообщение, напишите номер заявки, которую хотите выбрать";
-SqlConnection myConnection = new("Server=localhost\\SQLEXPRESS03;Database=TgBot;Trusted_Connection=True;");
+SqlConnection myConnection = new("Server=localhost;Database=TgBot;Trusted_Connection=True;");
 DateTime dt_start = DateTime.Now;
 
 
@@ -43,14 +43,14 @@ ReplyKeyboardMarkup ArkmMenu = new(new[]
 { ResizeKeyboard = true };
 ReplyKeyboardMarkup ArkmPayRate = new(new[]
 {
-    new[]{
+    new[] {
         new KeyboardButton("Базовый"),
-        new KeyboardButton("Средний")},
-    new[]{
+        new KeyboardButton("Средний") },
+    new[] {
         new KeyboardButton("Расширенный"),
-        new KeyboardButton("Максимум")}
+        new KeyboardButton("Максимум") }
 })
-{ ResizeKeyboard = true };
+{ ResizeKeyboard = true, Selective = true };
 ReplyKeyboardMarkup ArkmCabinet = new(new[]
 {
     new[]{
@@ -99,83 +99,83 @@ User me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
 var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
-await CheckAdds();
+/*await CheckAdds();
 while (await timer.WaitForNextTickAsync(cts.Token))
 {
     await CheckAdds();
-}
+}*/
 Console.ReadLine();
 
 //Send cancellation request to stop bot
 cts.Cancel();
 
-async Task CheckAdds()
-{
-    try
-    {
-        if (myConnection.State == ConnectionState.Open || myConnection.State == ConnectionState.Connecting)
-        {
-            await myConnection.CloseAsync();
-        }
-        await myConnection.OpenAsync(cts.Token);
-        string CheckAdds_q = "select id_add, text, hours, active_hours, last_check, chatId from adds inner join users on adds.publisher = users.id_user where status = 1 and publisher > 0";
-        SqlDataAdapter CheckAdds_adpt = new(CheckAdds_q, myConnection);
-        DataTable CheckAdds_tbl = new();
-        CheckAdds_adpt.Fill(CheckAdds_tbl);
-        if (CheckAdds_tbl.Rows.Count > 0)
-        {
-            for (int i = 0; i < CheckAdds_tbl.Rows.Count; i++)
-            {
-                if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim())) >= TimeSpan.Parse("01:00:00"))
-                {
-                    var user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), cts.Token);
-                    if (user_info.Bio.Trim().ToLower().Contains(CheckAdds_tbl.Rows[i][1].ToString().Trim().ToLower()))
-                    {
-                        var dt_now = DateTime.Now;
-                        var last_check = new DateTime(dt_now.Year, dt_now.Month, dt_now.Day, dt_now.Hour, dt_now.Minute, 0);
+//async Task CheckAdds()
+//{
+//    try
+//    {
+//        if (myConnection.State == ConnectionState.Open || myConnection.State == ConnectionState.Connecting)
+//        {
+//            await myConnection.CloseAsync();
+//        }
+//        await myConnection.OpenAsync(cts.Token);
+//        string CheckAdds_q = "select id_add, text, hours, active_hours, last_check, chatId from adds inner join users on adds.publisher = users.id_user where status = 1 and publisher > 0";
+//        SqlDataAdapter CheckAdds_adpt = new(CheckAdds_q, myConnection);
+//        DataTable CheckAdds_tbl = new();
+//        CheckAdds_adpt.Fill(CheckAdds_tbl);
+//        if (CheckAdds_tbl.Rows.Count > 0)
+//        {
+//            for (int i = 0; i < CheckAdds_tbl.Rows.Count; i++)
+//            {
+//                if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim())) >= TimeSpan.Parse("01:00:00"))
+//                {
+//                    var user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), cts.Token);
+//                    if (user_info.Bio.Trim().ToLower().Contains(CheckAdds_tbl.Rows[i][1].ToString().Trim().ToLower()))
+//                    {
+//                        var dt_now = DateTime.Now;
+//                        var last_check = new DateTime(dt_now.Year, dt_now.Month, dt_now.Day, dt_now.Hour, dt_now.Minute, 0);
 
-                        string upd_q = $"update adds set active_hours = active_hours + 1, last_check = '{last_check}' where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
-                        await ConnectToSQL(upd_q);
-                        string upd_publ_q = $"update users set account = account + 90";
-                        await ConnectToSQL(upd_publ_q);
-                    }
-                    else
-                    {
-                        string upd_publ = $"update adds set publisher = NULL where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
-                        await ConnectToSQL(upd_publ);
-                        await CommandAndTxt(int.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), $"Так вы убрали текст заявки №{CheckAdds_tbl.Rows[i][0].ToString().Trim()}, то вы больше не привязаны к ней", cts.Token);
-                        string SendNote_q = $"select id_add, chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
-                        SqlDataAdapter SendNote_adpt = new(SendNote_q, myConnection);
-                        DataTable SendNote_tbl = new();
-                        CheckAdds_adpt.Fill(CheckAdds_tbl);
-                        await CommandAndTxt(int.Parse(SendNote_tbl.Rows[0][1].ToString().Trim()), $"Заявка №{CheckAdds_tbl.Rows[i][0].ToString().Trim()} теперь снова доступна для выбора, так как Паблишер не выполнил условия продления", cts.Token);
-                    }
-                }
-            }
-        }
+//                        string upd_q = $"update adds set active_hours = active_hours + 1, last_check = '{last_check}' where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+//                        await ConnectToSQL(upd_q);
+//                        string upd_publ_q = $"update users set account = account + 90";
+//                        await ConnectToSQL(upd_publ_q);
+//                    }
+//                    else
+//                    {
+//                        string upd_publ = $"update adds set publisher = NULL where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+//                        await ConnectToSQL(upd_publ);
+//                        await CommandAndTxt(int.Parse(CheckAdds_tbl.Rows[i][5].ToString().Trim()), $"Так вы убрали текст заявки №{CheckAdds_tbl.Rows[i][0].ToString().Trim()}, то вы больше не привязаны к ней", cts.Token);
+//                        string SendNote_q = $"select id_add, chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+//                        SqlDataAdapter SendNote_adpt = new(SendNote_q, myConnection);
+//                        DataTable SendNote_tbl = new();
+//                        CheckAdds_adpt.Fill(CheckAdds_tbl);
+//                        await CommandAndTxt(int.Parse(SendNote_tbl.Rows[0][1].ToString().Trim()), $"Заявка №{CheckAdds_tbl.Rows[i][0].ToString().Trim()} теперь снова доступна для выбора, так как Паблишер не выполнил условия продления", cts.Token);
+//                    }
+//                }
+//            }
+//        }
 
-        string CompletedAdds_q = "select id_add, hours, active_hours, chatId from adds inner join users on adds.advertiser = users.id_user where status = '1' and publisher > 0 and hours = active_hours";
-        SqlDataAdapter CompletedAdds_adpt = new(CompletedAdds_q, myConnection);
-        DataTable CompletedAdds_tbl = new();
-        CompletedAdds_adpt.Fill(CompletedAdds_tbl);
-        if (CompletedAdds_tbl.Rows.Count > 0)
-        {
-            for (int i = 0; i < CompletedAdds_tbl.Rows.Count; i++)
-            {
-                string upd_publ = $"update adds set status = 3 where id_add = {int.Parse(CompletedAdds_tbl.Rows[i][0].ToString().Trim())}";
-                await ConnectToSQL(upd_publ);
-                await CommandAndTxt(int.Parse(CompletedAdds_tbl.Rows[i][3].ToString().Trim()), $"Заявка №{CompletedAdds_tbl.Rows[i][0].ToString().Trim()} закончила свою работу", cts.Token);
-            }
-        }
-        myConnection.Close();
-        Console.WriteLine($" - - - - - - - - - - \n Была проведена проверка всех активных заявок в {DateTime.Now}\n - - - - - - - - - - ");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
-    }
+//        string CompletedAdds_q = "select id_add, hours, active_hours, chatId from adds inner join users on adds.advertiser = users.id_user where status = '1' and publisher > 0 and hours = active_hours";
+//        SqlDataAdapter CompletedAdds_adpt = new(CompletedAdds_q, myConnection);
+//        DataTable CompletedAdds_tbl = new();
+//        CompletedAdds_adpt.Fill(CompletedAdds_tbl);
+//        if (CompletedAdds_tbl.Rows.Count > 0)
+//        {
+//            for (int i = 0; i < CompletedAdds_tbl.Rows.Count; i++)
+//            {
+//                string upd_publ = $"update adds set status = 3 where id_add = {int.Parse(CompletedAdds_tbl.Rows[i][0].ToString().Trim())}";
+//                await ConnectToSQL(upd_publ);
+//                await CommandAndTxt(int.Parse(CompletedAdds_tbl.Rows[i][3].ToString().Trim()), $"Заявка №{CompletedAdds_tbl.Rows[i][0].ToString().Trim()} закончила свою работу", cts.Token);
+//            }
+//        }
+//        myConnection.Close();
+//        Console.WriteLine($" - - - - - - - - - - \n Была проведена проверка всех активных заявок в {DateTime.Now}\n - - - - - - - - - - ");
+//    }
+//    catch (Exception ex)
+//    {
+//        Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
+//    }
     
-}
+//}
 
 async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationToken cancellationToken)
 {
@@ -305,6 +305,8 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 cancellationToken: cancellationToken);
             }
 
+
+
             else if (message.ReplyToMessage != null)
             {
                 if (message.ReplyToMessage.Text == entertxt)
@@ -313,17 +315,12 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                     {
                         addtxt = message.Text;
 
-                        Message sentmsg = await botClient.SendTextMessageAsync(
-                            chatId: chatId,
-                            text: payrate,
-                            replyMarkup: ArkmPayRate,
-                            cancellationToken: cancellationToken);
+                        await ChoosePayRent(chatId, cancellationToken, message.MessageId);
                     }
                     else
                     {
                         await SentMenu(role, chatId, cancellationToken, $"Слишком длинное сообщение");
                     }
-
                 }
 
                 else if (message.ReplyToMessage.Text == adddays || message.ReplyToMessage.Text == activateadd || message.ReplyToMessage.Text == stopadd || message.ReplyToMessage.Text == deleteadd || message.ReplyToMessage.Text == addmoney)
@@ -589,8 +586,26 @@ async Task SentConfirm(long chatId, CancellationToken cancellationToken, string 
     });
     sentMenu = await botClient.SendTextMessageAsync(
         chatId: chatId,
-        text: $"{txt}",
+        text: txt,
         replyMarkup: ikmSentConfim,
+        cancellationToken: cancellationToken);
+}
+
+async Task ChoosePayRent(long chatId, CancellationToken cancellationToken, int msgID)
+{
+
+    Message? sentMenu = null;
+    InlineKeyboardMarkup ikmChoosePayRent = new(new[]
+    {
+        InlineKeyboardButton.WithCallbackData("Базовый", $"Базовый_1_{msgID}"),
+        InlineKeyboardButton.WithCallbackData("Средний", $"Средний_2_{msgID}"),
+        InlineKeyboardButton.WithCallbackData("Расширенный", $"Расширенный_3_{msgID}"),        
+        InlineKeyboardButton.WithCallbackData("Максимум", $"Максимум_4_{msgID}")
+    });
+    sentMenu = await botClient.SendTextMessageAsync(
+        chatId: chatId,
+        text: payrate,
+        replyMarkup: ikmChoosePayRent,
         cancellationToken: cancellationToken);
 }
 
@@ -812,7 +827,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                     BotUser curr_user = new();
                     foreach (var user in users)
                     {
-                        if (user.GetUsername() == update.CallbackQuery.From.Username)
+                        if (user != null && user.GetUsername() == update.CallbackQuery.From.Username)
                         {
                             curr_user = user;
                         }
@@ -904,6 +919,14 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                             await SentMenu(curr_user.GetRole(), chatId, cts.Token, "У вас пустое описание");
                         }
                     }
+
+                    else if (update.CallbackQuery.Data.Contains("Базовый") || update.CallbackQuery.Data.Contains("Средний") || update.CallbackQuery.Data.Contains("Расширенный") || update.CallbackQuery.Data.Contains("Максимум"))
+                    {
+                        string[] cbqData = update.CallbackQuery.Data.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+                        string msgID = cbqData[2];
+                        await botClient.EditMessageReplyMarkupAsync(update.CallbackQuery.From.Id, int.Parse(msgID) + 1, null, cancellationToken);
+
+                    }
                 }
                 break;
             case UpdateType.Message:
@@ -932,7 +955,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                     int count = 0;
                     foreach (BotUser user in users)
                     {
-                        if (user.GetUsername() == message.Chat.Username)
+                        if (user != null && user.GetUsername() == message.Chat.Username)
                         {
                             if (user.GetRole() == 1)
                             {
