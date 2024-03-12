@@ -755,16 +755,16 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
 {
     try
     {
-        string role_str = "";
+        string pc_query = "";
         if (role == 1)
         {
-            role_str = "advertiser";
+            pc_query = $"select adds.id_add, adds.text, addstatuses.status, paymentrates.name, (select COUNT(*) from PublisherToAdd where PublisherToAdd.id_add = adds.id_add) as 'active_publs', paymentrates.number_of_publs, paymentrates.price, adds.active_hours, adds.hours from adds inner join addstatuses on adds.status = addstatuses.id_status inner join paymentrates on adds.id_payrate = paymentrates.id_payrate where adds.advertiser = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> '3'";
         }
         else if (role == 2)
         {
-            role_str = "publisher";
+            pc_query = "select publishertoadd.id_add, adds.text, adds.hours, adds.active_hours, publishertoadd.active_hours from publishertoadd inner join adds on publishertoadd.id_add = adds.id_add inner join addstatuses on adds.status = addstatuses.id_status inner join users on adds.advertiser = users.id_user inner join paymentrates on adds.id_payrate = paymentrates.id_payrate where publishertoadd.id_publisher = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> 3";
         }
-        string pc_query = $"select adds.id_add, adds.text, addstatuses.status, adds.publisher, adds.active_hours, adds.hours, adds.status, users.account from adds inner join addstatuses on adds.status = addstatuses.id_status inner join users on adds.{role_str} = users.id_user where adds.{role_str} = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> '3'";
+
         SqlDataAdapter pc_adpt = new(pc_query, myConnection);
         DataTable pc_table = new();
         pc_adpt.Fill(pc_table);
@@ -779,15 +779,18 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
         if (pc_table.Rows.Count > 0)
         {            
             string row = "";
-            string publisher = "Отсутствует";
-            for (int i = 0; i < pc_table.Rows.Count; i++)
+            if (role == 1)
             {
-                if (pc_table.Rows[i][3].ToString().Trim() != "")
-                {
-                    publisher = "Есть";
+                for (int i = 0; i < pc_table.Rows.Count; i++)
+                {                    
+                    row += $"Заявка №{pc_table.Rows[i][0]} \nТекст: {pc_table.Rows[i][1]} \nСтатус: {pc_table.Rows[i][2]} \nТариф: {pc_table.Rows[i][3]} - {pc_table.Rows[i][5]} паблишеров за {pc_table.Rows[i][6]} ед/день \nКол-во активных паблишеров: {pc_table.Rows[i][4]} из {pc_table.Rows[i][5]} \nПрошло {pc_table.Rows[i][4]} из {pc_table.Rows[i][5]} часов \n \n";
                 }
-                row += $"Заявка №{pc_table.Rows[i][0]} \nТекст: {pc_table.Rows[i][1]} \nСтатус: {pc_table.Rows[i][2]} \nПаблишер: {publisher} \nПрошло {pc_table.Rows[i][4]} из {pc_table.Rows[i][5]} часов \n \n";
             }
+            else
+            {
+                msg = $"Заявка №{pc_table.Rows[0][0]} \nТекст: {pc_table.Rows[0][1]} \nБудет активна ещё {int.Parse(pc_table.Rows[0][2].ToString().Trim()) - int.Parse(pc_table.Rows[0][3].ToString().Trim())} часов \nВы рекламировали {pc_table.Rows[0][4]} часов \nЗаработано {int.Parse(pc_table.Rows[0][3].ToString().Trim()) * 90}";                
+            }
+            
             msg += row;
         }
         else
