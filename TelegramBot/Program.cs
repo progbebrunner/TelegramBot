@@ -315,8 +315,6 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 cancellationToken: cancellationToken);
             }
 
-
-
             else if (message.ReplyToMessage != null)
             {
                 if (message.ReplyToMessage.Text == entertxt)
@@ -477,7 +475,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Выйти")
             {
-                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти? \n \n Все ваши заявки будут удалены", message.MessageId);
+                await SentConfirm(chatId, cancellationToken, "Вы уверены, что хотите выйти? \n \nВсе ваши заявки будут удалены", message.MessageId);
             }
 
             else
@@ -502,26 +500,14 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Отказаться от заявки")
             {
-                string removeadd_query = $"select * from publishertoadd where id_publisher = (select id_user from users where username = '{message.Chat.Username}') and status = '1'";
+                string findpubladd_query = $"select id_add from publishertoadd where id_publisher = (select id_user from users where username = '{message.Chat.Username}') and status = '1'";                 
+                SqlDataAdapter findpubladd_adpt = new(findpubladd_query, myConnection);
+                DataTable findpubladd_table = new();
+                findpubladd_adpt.Fill(findpubladd_table);
                  
-                SqlDataAdapter removeadd_adpt = new(removeadd_query, myConnection);
-                DataTable removeadd_table = new();
-                removeadd_adpt.Fill(removeadd_table);
-                 
-                if (removeadd_table.Rows.Count != 0)
+                if (findpubladd_table.Rows.Count != 0)
                 {
-                    string update_query = $"update publishertoadd set status = 3 where id_publisher = (select id_user from users where username = '{message.Chat.Username}')";
-                    await ConnectToSQL(update_query);
-                    await SentMenu(role, chatId, cancellationToken, "Вы успешно отказались от заявки");
-                    string SendNoteToAdv_q = $"select chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {message.Text}";
-                    SqlDataAdapter SendNoteToAdv_adpt = new(SendNoteToAdv_q, myConnection);
-                    DataTable SendNoteToAdv_table = new();
-                    SendNoteToAdv_adpt.Fill(SendNoteToAdv_table);
-                    if (SendNoteToAdv_table.Rows.Count != 0)
-                    {
-                        await CommandAndTxt(int.Parse(SendNoteToAdv_table.Rows[0][0].ToString().Trim()), $"К сожалению, паблишер отказался заявки №{message.Text}", cancellationToken);
-                    }
-
+                    await PublDeleteOrReject(message.Chat.Username.Trim(), findpubladd_table.Rows[0][0].ToString().Trim(), role, chatId, cancellationToken);
                 }
                 else
                 {
@@ -767,7 +753,7 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
         string pc_query = "";
         if (role == 1)
         {
-            pc_query = $"select adds.id_add, adds.text, addstatuses.status, paymentrates.name, (select COUNT(*) from PublisherToAdd where PublisherToAdd.id_add = adds.id_add) as 'active_publs', paymentrates.number_of_publs, paymentrates.price, adds.active_hours, adds.hours from adds inner join addstatuses on adds.status = addstatuses.id_status inner join paymentrates on adds.id_payrate = paymentrates.id_payrate where adds.advertiser = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> '3'";
+            pc_query = $"select adds.id_add, adds.text, addstatuses.status, paymentrates.name, (select COUNT(*) from PublisherToAdd where PublisherToAdd.id_add = adds.id_add and status = '1') as 'active_publs', paymentrates.number_of_publs, paymentrates.price, adds.active_hours, adds.hours from adds inner join addstatuses on adds.status = addstatuses.id_status inner join paymentrates on adds.id_payrate = paymentrates.id_payrate where adds.advertiser = (select id_user from users where username = '{message.Chat.Username}') and adds.status <> '3'";
         }
         else if (role == 2)
         {
@@ -854,6 +840,21 @@ async Task ShowAllAvailableAdds(Message message, long chatId, CancellationToken 
     }
 }
 
+async Task PublDeleteOrReject(string username, string id_add, int? role, long chatId, CancellationToken cancellationToken)
+{
+    string update_query = $"update publishertoadd set status = 3 where id_publisher = (select id_user from users where username = '{username}')";
+    await ConnectToSQL(update_query);
+    await SentMenu(role, chatId, cancellationToken, "Вы успешно отказались от заявки");
+    string SendNoteToAdv_q = $"select chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {id_add}";
+    SqlDataAdapter SendNoteToAdv_adpt = new(SendNoteToAdv_q, myConnection);
+    DataTable SendNoteToAdv_table = new();
+    SendNoteToAdv_adpt.Fill(SendNoteToAdv_table);
+    if (SendNoteToAdv_table.Rows.Count != 0)
+    {
+        await CommandAndTxt(int.Parse(SendNoteToAdv_table.Rows[0][0].ToString().Trim()), $"К сожалению, паблишер отказался заявки №{id_add} \nТеперь она снова доступна для выбора", cancellationToken);
+    }
+}
+
 async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
 {
     try
@@ -897,7 +898,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         DataTable AddsForDel_table = new();
                         if (curr_user.GetRole() == 1)
                         {
-                            string AddsForDel_query = $"select adds.publisher from Adds inner join users on adds.advertiser = users.id_user where (advertiser = (select id_user from users where username = '{update.CallbackQuery.From.Username}')) and (publisher > 0) and (adds.status = 1)";
+                            string AddsForDel_query = $"select id_publisher from publishertoadd inner join adds on publishertoadd.id_add = adds.id_add inner join users on adds.advertiser = users.id_user where advertiser = (select id_user from users where username = '{update.CallbackQuery.From.Username}') and adds.status = '1' and publishertoadd.status = '1'";
                             SqlDataAdapter AddsForDel_adpt = new(AddsForDel_query, myConnection);
                             AddsForDel_adpt.Fill(AddsForDel_table);
                             if (AddsForDel_table.Rows.Count > 0)
@@ -913,18 +914,31 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                             }
                             string deleteAdvQuery = $"update adds set status = 3 where advertiser = (select id_user from users where username = '{update.CallbackQuery.From.Username}')";
                             await ConnectToSQL(deleteAdvQuery);
+
+                            string findadvadds_query = $"select id_add from publishertoadd where id_publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username.Trim()}') and status = '1'";
+                            SqlDataAdapter findadvadds_adpt = new(findadvadds_query, myConnection);
+                            DataTable findadvadds_table = new();
+                            findadvadds_adpt.Fill(findadvadds_table);
+                            if (findadvadds_table.Rows.Count > 0)
+                            {
+                                for (int i = 0; i < findadvadds_table.Rows.Count; i++)
+                                {
+                                    string deleteAdv1Query = $"update publishertoadd set status = 3 where id_add = '{findadvadds_table.Rows[i][0]}'";
+                                    await ConnectToSQL(deleteAdvQuery);
+                                }
+                            }                            
                         }
                         else if (curr_user.GetRole() == 2)
                         {
-                            string AddsForDel_query = $"select adds.id_add, adds.status, users.chatID from adds inner join users on adds.advertiser = users.id_user where adds.publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}') and adds.status = 1";
-                            SqlDataAdapter AddsForDel_adpt = new(AddsForDel_query, myConnection);
-                            AddsForDel_adpt.Fill(AddsForDel_table);
-                            if (AddsForDel_table.Rows.Count > 0)
+                            string findpubladd_query = $"select id_add from publishertoadd where id_publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username.Trim()}') and status = '1'";
+                            SqlDataAdapter findpubladd_adpt = new(findpubladd_query, myConnection);
+                            DataTable findpubladd_table = new();
+                            findpubladd_adpt.Fill(findpubladd_table);
+
+                            if (findpubladd_table.Rows.Count != 0)
                             {
-                                await CommandAndTxt(long.Parse(AddsForDel_table.Rows[0][2].ToString().Trim()), $"К сожалению, паблишер заявки №{AddsForDel_table.Rows[0][0]} был удалён \n \nТеперь ваша заявка снова доступна для выбора", cancellationToken);
+                                await PublDeleteOrReject(update.CallbackQuery.From.Username.Trim(), findpubladd_table.Rows[0][0].ToString().Trim(), curr_user.GetRole(), chatId, cancellationToken);
                             }
-                            string deleteAdvQuery = $"update adds set publisher = NULL where publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}')";
-                            await ConnectToSQL(deleteAdvQuery);
                         }
                         foreach (var user in users)
                         {
@@ -960,7 +974,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         {
                             if (user_info.Bio.Trim().ToLower().Contains(PublDescCheck_table.Rows[0][0].ToString().Trim().ToLower()))
                             {
-                                string update_query = $"insert into publishertoadd (id_add, id_publisher, status, active_hours, last_check) values ({cbqData[1]}, id_publisher = (select id_user from users where username = '{update.CallbackQuery.From.Username}'), '1', '0', last_check = '{last_check}')";
+                                string update_query = $"insert into publishertoadd (id_add, id_publisher, status, active_hours, last_check) values ({cbqData[1]}, (select id_user from users where username = '{update.CallbackQuery.From.Username}'), '1', '0', '{last_check}')";
                                 await ConnectToSQL(update_query);
                                 await SentMenu(2, chatId, cancellationToken, $"Вы успешно выбрали заявку №{cbqData[1]}");
                             }
