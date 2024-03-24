@@ -7,10 +7,12 @@ using Telegram.Bot.Types.ReplyMarkups;
 using System.Data.SqlClient;
 using System.Data;
 using TelegramBot;
+using Excel = Microsoft.Office.Interop.Excel;
+using System.IO;
 using Telegram.Bot.Requests;
-using System;
 using System.Threading;
 using Microsoft.VisualBasic;
+using static System.Net.Mime.MediaTypeNames;
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
 
@@ -86,7 +88,6 @@ ReplyKeyboardMarkup PrkmAdds = new(new[]
     new KeyboardButton("Вернуться в меню"),
 })
 { ResizeKeyboard = true };
-
 ReplyKeyboardMarkup PrkmCabinet = new(new[]
 {
     new[]{
@@ -94,6 +95,15 @@ ReplyKeyboardMarkup PrkmCabinet = new(new[]
         new KeyboardButton("Вернуться в меню")},
     new[]{
         new KeyboardButton("Выйти")}
+})
+{ ResizeKeyboard = true };
+
+ReplyKeyboardMarkup MrkmMenu = new(new[]
+{
+    new[]{
+        new KeyboardButton("Информация по всем созданным заявка"),
+        new KeyboardButton("Все активные заявки с паблишерами"),
+        new KeyboardButton("Все пользователи")}
 })
 { ResizeKeyboard = true };
 
@@ -624,10 +634,37 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else
             {
-                string msg = "К сожалению, такой команды нет \nНажмите \"/start\" для перехода в меню";
-                await CommandAndTxt(chatId, msg, cancellationToken);
+                await CommandAndTxt(chatId, "К сожалению, такой команды нет \nНажмите \"/start\" для перехода в меню", cancellationToken);
             }
         }        
+    
+        else if (role == 3)
+        {
+            if (message.Text == "/start")
+            {
+                await SentMenu(role, chatId, cancellationToken, "Меню");
+            }
+
+            else if (message.Text == "Информация по всем созданным заявка")
+            {
+                await SentExcelToManager(chatId, cancellationToken, "select all from adds where status = '1'");                                
+            }
+
+            else if (message.Text == "Все активные заявки с паблишерами")
+            {
+                await SentExcelToManager(chatId, cancellationToken, "select all from publishertoadd where status = '1'");
+            }
+
+            else if (message.Text == "Все пользователи")
+            {
+                await SentExcelToManager(chatId, cancellationToken, "select all from users");
+            }
+
+            else 
+            {                
+                await CommandAndTxt(chatId, "К сожалению, такой команды нет \nНажмите \"/start\" для перехода в меню", cancellationToken);
+            }
+        }
     }
     catch (Exception ex)
     {
@@ -674,7 +711,7 @@ async Task SentToManager(long chatId, CancellationToken cancellationToken, int a
     Message checkNewAddMsg = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: $"Новая заявка {addID} от @{username} \n \nТекст: {txt}",
-        replyMarkup: null,
+        replyMarkup: MrkmMenu,
         cancellationToken: cancellationToken);
 
     InlineKeyboardMarkup checkNewAddIkm = new(new[]
@@ -683,6 +720,114 @@ async Task SentToManager(long chatId, CancellationToken cancellationToken, int a
         InlineKeyboardButton.WithCallbackData("Отклонить", $"Менеджер отклонил_{addID}_{checkNewAddMsg.MessageId}")
     });
     await botClient.EditMessageReplyMarkupAsync(chatId, checkNewAddMsg.MessageId, checkNewAddIkm, cancellationToken);
+}
+
+async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, string Excel_q)
+{
+    Excel.Application xlApp;
+    Excel.Worksheet? xlSheet = null;
+    Excel.Range? xlSheetRange = null;
+    xlApp = new Excel.Application();
+    try
+    {
+        //добавляем книгу
+        xlApp.Workbooks.Add(Type.Missing);
+
+        //делаем временно неактивным документ
+        xlApp.Interactive = false;
+        xlApp.EnableEvents = false;
+
+        //выбираем лист на котором будем работать (Лист 1)
+        xlSheet = (Excel.Worksheet)xlApp.Sheets[1];
+        //Название листа
+        xlSheet.Name = "Данные";
+
+        //Выгрузка данных
+        SqlDataAdapter Excel_adpt = new(Excel_q, myConnection);
+        DataTable Excel_tbl = new();
+        Excel_adpt.Fill(Excel_tbl);
+        if (Excel_tbl.Rows.Count > 0)
+        { 
+        }
+        int collInd = 0;
+        int rowInd = 0;
+        string data = "";
+
+        //называем колонки
+        for (int i = 0; i < Excel_tbl.Columns.Count; i++)
+        {
+            data = Excel_tbl.Columns[i].ColumnName.ToString();
+            xlSheet.Cells[1, i + 1] = data;
+
+            //выделяем первую строку
+            xlSheetRange = xlSheet.get_Range("A1:Z1", Type.Missing);
+
+            //делаем полужирный текст и перенос слов
+            xlSheetRange.WrapText = true;
+            xlSheetRange.Font.Bold = true;
+        }
+
+        //заполняем строки
+        for (rowInd = 0; rowInd < Excel_tbl.Rows.Count; rowInd++)
+        {
+            for (collInd = 0; collInd < Excel_tbl.Columns.Count; collInd++)
+            {
+                data = Excel_tbl.Rows[rowInd].ItemArray[collInd].ToString();
+                xlSheet.Cells[rowInd + 2, collInd + 1] = data;
+            }
+        }
+
+        //выбираем всю область данных
+        xlSheetRange = xlSheet.UsedRange;
+
+        //выравниваем строки и колонки по их содержимому
+        xlSheetRange.Columns.AutoFit();
+        xlSheetRange.Rows.AutoFit();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
+    }
+    finally
+    {
+        //Показываем ексель
+        //xlApp.Visible = true; 
+        //xlApp.Interactive = true;
+        //xlApp.ScreenUpdating = true;
+        //xlApp.UserControl = true;
+
+        await using Stream stream = System.IO.File.OpenRead(xlApp.Path);
+        Message sentExcel = await botClient.SendDocumentAsync(
+            chatId: chatId,
+            caption: "Ваш файл",
+            document: InputFile.FromStream(stream: stream, fileName: xlApp.Name),
+            replyMarkup: MrkmMenu,
+            cancellationToken: cancellationToken);
+
+        //Отсоединяемся от Excel
+        releaseObject(xlSheetRange);
+        releaseObject(xlSheet);
+        releaseObject(xlApp);
+    }
+
+    //Освобождаем ресуры (закрываем Excel)
+    void releaseObject(object obj)
+    {
+        try
+        {
+            System.Runtime.InteropServices.Marshal.ReleaseComObject(obj);
+            obj = null;
+        }
+        catch (Exception ex)
+        {
+            obj = null;
+            Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
+        }
+        finally
+        {
+            GC.Collect();
+        }
+    }
 }
 
 async Task ConnectToSQL(string query)
@@ -710,6 +855,14 @@ async Task SentMenu(int? role, long chatId, CancellationToken cancellationToken,
             text: $"{txt} {menuanswer}",
             replyMarkup: PrkmMenu,
             cancellationToken: cancellationToken);
+    }
+    else if (role == 3)
+    {
+        Message sentMenu = await botClient.SendTextMessageAsync(
+        chatId: chatId,
+        text: $"Вы ввели неправильное значение {menuanswer}",
+        replyMarkup: MrkmMenu,
+        cancellationToken: cancellationToken);
     }
 }
 
@@ -778,7 +931,6 @@ async Task WrongData(Message message, int? role, long chatId, CancellationToken 
         replyMarkup: PrkmMenu,
         cancellationToken: cancellationToken);
     }
-
 }
 
 async Task PersonalCabinet(Message message, int? role, long chatId, CancellationToken cancellationToken)
