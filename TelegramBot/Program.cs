@@ -9,10 +9,9 @@ using System.Data;
 using TelegramBot;
 using Excel = Microsoft.Office.Interop.Excel;
 using System.IO;
-using Telegram.Bot.Requests;
-using System.Threading;
-using Microsoft.VisualBasic;
-using static System.Net.Mime.MediaTypeNames;
+using System.Diagnostics;
+
+
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
 
@@ -45,7 +44,6 @@ payrate_adpt.Fill(payrate_table);
 string managers_query = $"select chatID from users where role = '3'";
 SqlDataAdapter managers_adpt = new(managers_query, myConnection);
 managers_adpt.Fill(managers_table);
-
 
 ReplyKeyboardMarkup ArkmMenu = new(new[]
 {
@@ -100,10 +98,9 @@ ReplyKeyboardMarkup PrkmCabinet = new(new[]
 
 ReplyKeyboardMarkup MrkmMenu = new(new[]
 {
-    new[]{
-        new KeyboardButton("Информация по всем созданным заявка"),
-        new KeyboardButton("Все активные заявки с паблишерами"),
-        new KeyboardButton("Все пользователи")}
+    new[]{new KeyboardButton("Информация по всем созданным заявка")},
+    new[]{new KeyboardButton("Все активные заявки с паблишерами")},
+    new[]{new KeyboardButton("Все пользователи")}
 })
 { ResizeKeyboard = true };
 
@@ -647,17 +644,17 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
             else if (message.Text == "Информация по всем созданным заявка")
             {
-                await SentExcelToManager(chatId, cancellationToken, "select all from adds where status = '1'");                                
+                await SentExcelToManager(chatId, cancellationToken, "select * from adds where status = '1'", "AllAdds");                                
             }
 
             else if (message.Text == "Все активные заявки с паблишерами")
             {
-                await SentExcelToManager(chatId, cancellationToken, "select all from publishertoadd where status = '1'");
+                await SentExcelToManager(chatId, cancellationToken, "select * from publishertoadd where status = '1'", "ActiveAdds");
             }
 
             else if (message.Text == "Все пользователи")
             {
-                await SentExcelToManager(chatId, cancellationToken, "select all from users");
+                await SentExcelToManager(chatId, cancellationToken, "select * from users", "AllUsers");
             }
 
             else 
@@ -722,111 +719,123 @@ async Task SentToManager(long chatId, CancellationToken cancellationToken, int a
     await botClient.EditMessageReplyMarkupAsync(chatId, checkNewAddMsg.MessageId, checkNewAddIkm, cancellationToken);
 }
 
-async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, string Excel_q)
+async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, string excel_q, string FName)
 {
-    Excel.Application xlApp;
-    Excel.Worksheet? xlSheet = null;
-    Excel.Range? xlSheetRange = null;
-    xlApp = new Excel.Application();
     try
     {
-        //добавляем книгу
-        xlApp.Workbooks.Add(Type.Missing);
+        string fileName = Directory.GetParent(Directory.GetCurrentDirectory()).Parent.Parent.FullName + $"\\ExcelReports\\{FName}.xlsx";
 
-        //делаем временно неактивным документ
-        xlApp.Interactive = false;
-        xlApp.EnableEvents = false;
+        Excel.Application xlsApp;
+        Excel.Workbook xlsWorkbook;
+        Excel._Worksheet xlsWorksheet;
+        object misValue = System.Reflection.Missing.Value;
 
-        //выбираем лист на котором будем работать (Лист 1)
-        xlSheet = (Excel.Worksheet)xlApp.Sheets[1];
-        //Название листа
-        xlSheet.Name = "Данные";
-
-        //Выгрузка данных
-        SqlDataAdapter Excel_adpt = new(Excel_q, myConnection);
-        DataTable Excel_tbl = new();
-        Excel_adpt.Fill(Excel_tbl);
-        if (Excel_tbl.Rows.Count > 0)
-        { 
-        }
-        int collInd = 0;
-        int rowInd = 0;
-        string data = "";
-
-        //называем колонки
-        for (int i = 0; i < Excel_tbl.Columns.Count; i++)
+        // Remove the old excel report file
+        try
         {
-            data = Excel_tbl.Columns[i].ColumnName.ToString();
-            xlSheet.Cells[1, i + 1] = data;
-
-            //выделяем первую строку
-            xlSheetRange = xlSheet.get_Range("A1:Z1", Type.Missing);
-
-            //делаем полужирный текст и перенос слов
-            xlSheetRange.WrapText = true;
-            xlSheetRange.Font.Bold = true;
-        }
-
-        //заполняем строки
-        for (rowInd = 0; rowInd < Excel_tbl.Rows.Count; rowInd++)
-        {
-            for (collInd = 0; collInd < Excel_tbl.Columns.Count; collInd++)
+            FileInfo oldFile = new FileInfo(fileName);
+            if (oldFile.Exists)
             {
-                data = Excel_tbl.Rows[rowInd].ItemArray[collInd].ToString();
-                xlSheet.Cells[rowInd + 2, collInd + 1] = data;
+                System.IO.File.SetAttributes(oldFile.FullName, FileAttributes.Normal);
+                oldFile.Delete();
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
 
-        //выбираем всю область данных
-        xlSheetRange = xlSheet.UsedRange;
+        }
 
-        //выравниваем строки и колонки по их содержимому
-        xlSheetRange.Columns.AutoFit();
-        xlSheetRange.Rows.AutoFit();
+        try
+        {
+            xlsApp = new Excel.Application();
+            xlsWorkbook = xlsApp.Workbooks.Add(misValue);
+            xlsWorksheet = (Excel.Worksheet)xlsWorkbook.Sheets[1];
+
+            // Create the header for Excel file
+            xlsWorksheet.Cells[1, 1] = "Таблица Users";
+            Excel.Range range = xlsWorksheet.get_Range("A1", "Z1");
+            range.Merge(1);
+
+            int i = 3;
+
+            using SqlCommand excel_cmd = new SqlCommand(excel_q, myConnection);
+            using SqlDataReader excel_dr = excel_cmd.ExecuteReader();
+            if (excel_dr.HasRows)
+            {
+                for (int j = 0; j < excel_dr.FieldCount; ++j)
+                {
+                    xlsWorksheet.Cells[i, j + 1] = excel_dr.GetName(j);
+                }
+                ++i;
+            }
+
+            while (excel_dr.Read())
+            {
+                for (int j = 1; j <= excel_dr.FieldCount; ++j)
+                    xlsWorksheet.Cells[i, j] = excel_dr.GetValue(j - 1);
+                ++i;
+            }
+
+            range = xlsWorksheet.get_Range("A2", "I" + (i + 2).ToString());
+            range.Columns.AutoFit();
+
+
+            xlsWorkbook.SaveAs(fileName, Excel.XlFileFormat.xlWorkbookDefault, null, misValue, misValue, misValue,
+                Excel.XlSaveAsAccessMode.xlShared, Excel.XlSaveConflictResolution.xlLocalSessionChanges, misValue, misValue, misValue, misValue);
+            Console.WriteLine(xlsWorkbook.FullName);
+            System.IO.File.SetAttributes(xlsWorkbook.FullName, FileAttributes.Normal);
+
+            await using Stream excel_stream = System.IO.File.OpenRead(xlsWorkbook.Path);
+            Message message = await botClient.SendDocumentAsync(
+                chatId: chatId,
+                document: InputFile.FromStream(stream: excel_stream, fileName: xlsWorkbook.Name),
+                caption: "Ваш файл",
+                replyMarkup: MrkmMenu);
+            excel_stream.Close();
+
+
+            xlsWorkbook.Close(true, misValue, misValue);
+            xlsApp.Quit();
+
+            ReleaseObject(xlsWorksheet);
+            ReleaseObject(xlsWorkbook);
+            ReleaseObject(xlsApp);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
+        }
+
+        static async void ReleaseObject(object? obj)
+        {
+            try
+            {
+                obj = null;
+            }
+            catch (Exception ex)
+            {
+                obj = null;
+                Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
+            }
+            finally
+            {
+                GC.Collect();
+            }
+            await Task.CompletedTask;
+        }
+        await Task.CompletedTask;
+
+        //Excel.Workbook wb = new();
+        //DataTable excel_dt = new();
+        //SqlDataAdapter excel_adpt = new(excel_q, myConnection);
+        //excel_adpt.Fill(excel_dt);
+        //wb.Worksheets.Add(excel_dt, "WorksheetName");*/
+        await Task.CompletedTask;
     }
     catch (Exception ex)
     {
         Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
-    }
-    finally
-    {
-        //Показываем ексель
-        //xlApp.Visible = true; 
-        //xlApp.Interactive = true;
-        //xlApp.ScreenUpdating = true;
-        //xlApp.UserControl = true;
-
-        await using Stream stream = System.IO.File.OpenRead(xlApp.Path);
-        Message sentExcel = await botClient.SendDocumentAsync(
-            chatId: chatId,
-            caption: "Ваш файл",
-            document: InputFile.FromStream(stream: stream, fileName: xlApp.Name),
-            replyMarkup: MrkmMenu,
-            cancellationToken: cancellationToken);
-
-        //Отсоединяемся от Excel
-        releaseObject(xlSheetRange);
-        releaseObject(xlSheet);
-        releaseObject(xlApp);
-    }
-
-    //Освобождаем ресуры (закрываем Excel)
-    void releaseObject(object obj)
-    {
-        try
-        {
-            System.Runtime.InteropServices.Marshal.ReleaseComObject(obj);
-            obj = null;
-        }
-        catch (Exception ex)
-        {
-            obj = null;
-            Console.WriteLine(" - - - - - - - - - - \n ОШИБКА: " + ex + "\n - - - - - - - - - - ");
-        }
-        finally
-        {
-            GC.Collect();
-        }
     }
 }
 
@@ -860,7 +869,7 @@ async Task SentMenu(int? role, long chatId, CancellationToken cancellationToken,
     {
         Message sentMenu = await botClient.SendTextMessageAsync(
         chatId: chatId,
-        text: $"Вы ввели неправильное значение {menuanswer}",
+        text: txt,
         replyMarkup: MrkmMenu,
         cancellationToken: cancellationToken);
     }
@@ -1246,13 +1255,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                     {
                         if (user != null && user.GetUsername() == message.Chat.Username)
                         {
-                            if (user.GetRole() == 1)
-                            {
-                                await TgBotProgramm(update, user.GetRole(), chatId, cancellationToken);
-                                count++;
-                                break;
-                            }
-                            else if (user.GetRole() == 2)
+                            if (user.GetRole() > 0)
                             {
                                 await TgBotProgramm(update, user.GetRole(), chatId, cancellationToken);
                                 count++;
