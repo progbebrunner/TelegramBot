@@ -753,7 +753,7 @@ async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, 
             xlsWorksheet = (Excel.Worksheet)xlsWorkbook.Sheets[1];
 
             // Create the header for Excel file
-            xlsWorksheet.Cells[1, 1] = "Таблица Users";
+            xlsWorksheet.Cells[1, 1] = $"Таблица Users на {DateTime.Now}";
             Excel.Range range = xlsWorksheet.get_Range("A1", "Z1");
             range.Merge(1);
 
@@ -783,10 +783,9 @@ async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, 
 
             xlsWorkbook.SaveAs(fileName, Excel.XlFileFormat.xlWorkbookDefault, null, misValue, misValue, misValue,
                 Excel.XlSaveAsAccessMode.xlShared, Excel.XlSaveConflictResolution.xlLocalSessionChanges, misValue, misValue, misValue, misValue);
-            Console.WriteLine(xlsWorkbook.FullName);
             System.IO.File.SetAttributes(xlsWorkbook.FullName, FileAttributes.Normal);
 
-            await using Stream excel_stream = System.IO.File.OpenRead(xlsWorkbook.Path);
+            await using Stream excel_stream = System.IO.File.OpenRead(xlsWorkbook.FullName);
             Message message = await botClient.SendDocumentAsync(
                 chatId: chatId,
                 document: InputFile.FromStream(stream: excel_stream, fileName: xlsWorkbook.Name),
