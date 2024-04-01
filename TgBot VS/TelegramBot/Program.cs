@@ -455,7 +455,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                             setstatus_adpt.Fill(setstatus_table);
                             if (setstatus_table.Rows.Count != 0)
                             {
-                                if (setstatus_table.Rows[0][0].ToString() != "3")
+                                if (setstatus_table.Rows[0][0].ToString() != "3" && setstatus_table.Rows[0][0].ToString() != "4")
                                 {
                                     string secquery = "";
                                     if (message.ReplyToMessage.Text == activateadd)
