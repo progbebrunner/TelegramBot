@@ -13,13 +13,13 @@ using System.Diagnostics;
 
 
 
-TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
+TelegramBotClient botClient = new("{YOUR_TOKEN}");
 
 using CancellationTokenSource cts = new();
 
 ReceiverOptions receiverOptions = new()
 {
-    AllowedUpdates = Array.Empty<UpdateType>() // receive all update types except ChatMember related updates
+    AllowedUpdates = Array.Empty<UpdateType>() 
 };
 
 BotUser[] users = Array.Empty<BotUser>();
