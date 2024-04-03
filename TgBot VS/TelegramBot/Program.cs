@@ -10,6 +10,7 @@ using TelegramBot;
 using Excel = Microsoft.Office.Interop.Excel;
 using System.IO;
 using System.Diagnostics;
+using System.Threading;
 
 
 
@@ -27,7 +28,7 @@ string addtxt = "";
 int payrateid = 0;
 string menuanswer = " \n \nЧто вы хотите сделать?";
 string entertxt = "Ответом на это сообщение, введите текст до 70 символов для вашего объявления";
-string payratetxt = "Выберите тариф для вашего объявления: \n \n   1. Базовый: до 5 паблишеров за 500 ед/день  \n   2. Средний: до 15 паблишеров за 750 ед/день \n   3. Расширенный: до 30 паблишеров за 1250 ед/день \n   4. Максимум: до 50 паблишеро за 2000 ед/день";
+string payratetxt = "Выберите тариф для вашего объявления: \n \n   1. Базовый: до 5 паблишеров за 500 ед/день  \n   2. Средний: до 15 паблишеров за 750 ед/день \n   3. Расширенный: до 30 паблишеров за 1250 ед/день \n   4. Максимум: до 50 паблишеров за 2000 ед/день";
 string adddays = "Сколько дней будет активно объявление? \nКоличество дней должно быть целым числом";
 string activateadd = "Введите номер заявки, которую надо активировать";
 string stopadd = "Введите номер заявки, которую надо приостановить";
@@ -144,9 +145,10 @@ async Task CheckAdds()
         {
             for (int i = 0; i < CheckAdds_tbl.Rows.Count; i++)
             {
+                var user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim()), cts.Token);
                 if (DateTime.Now.Subtract(DateTime.Parse(CheckAdds_tbl.Rows[i][3].ToString().Trim())) >= TimeSpan.Parse("01:00:00"))
                 {
-                    var user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim()), cts.Token);
+                    user_info = await botClient.GetChatAsync(long.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim()), cts.Token);
                     if (user_info.Bio is not null)
                     {
                         if (user_info.Bio.Trim().ToLower().Contains(CheckAdds_tbl.Rows[i][2].ToString().Trim().ToLower()))
@@ -155,6 +157,17 @@ async Task CheckAdds()
                             await ConnectToSQL(upd_last_check_q);
                             string upd_publ_acc_q = $"update users set account = account + 90 where id_user = {int.Parse(CheckAdds_tbl.Rows[i][1].ToString().Trim())}";
                             await ConnectToSQL(upd_publ_acc_q);
+                        }
+                        else
+                        {
+                            string upd_publ = $"update publishertoadd set status = 3, last_check = '{last_check}' where id_publisher = {int.Parse(CheckAdds_tbl.Rows[i][1].ToString().Trim())} and status = '1'";
+                            await ConnectToSQL(upd_publ);
+                            await CommandAndTxt(long.Parse(CheckAdds_tbl.Rows[i][4].ToString().Trim()), $"Так вы убрали текст заявки №{CheckAdds_tbl.Rows[i][0].ToString().Trim()}, то вы больше не привязаны к ней", cts.Token);
+                            string SendNote_q = $"select id_add, chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {int.Parse(CheckAdds_tbl.Rows[i][0].ToString().Trim())}";
+                            SqlDataAdapter SendNote_adpt = new(SendNote_q, myConnection);
+                            DataTable SendNote_tbl = new();
+                            SendNote_adpt.Fill(SendNote_tbl);
+                            await CommandAndTxt(long.Parse(SendNote_tbl.Rows[0][1].ToString().Trim()), $"Заявка №{SendNote_tbl.Rows[0][0].ToString().Trim()} потеряла 1-го Паблишера, так как он не выполнил условия продления", cts.Token);
                         }
                     }
                     else
@@ -396,9 +409,9 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                 int add_price = int.Parse(message.Text.Trim()) * payrate_price;
                                 if (int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) >= add_price)
                                 {
-                                    var dt_now= new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, DateTime.Now.Hour, DateTime.Now.Minute, 0);
+                                    DateTime dt_now= new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, DateTime.Now.Hour, DateTime.Now.Minute, 0);
 
-                                    string query = $"insert into Adds (advertiser, text, id_payrate, status, hours, active_hours) values ((select id_user from users where username = '{message.Chat.Username}'), '{addtxt}', {payrateid}, '4', '{int.Parse(message.Text) * 24}', '0', {dt_now})";
+                                    string query = $"insert into Adds (advertiser, text, id_payrate, status, hours, active_hours, last_hours_add) values ((select id_user from users where username = '{message.Chat.Username}'), '{addtxt}', {payrateid}, '4', '{int.Parse(message.Text) * 24}', '0', '{dt_now}')";
                                     await ConnectToSQL(query);
                                     query = $"update users set account = '{int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) - add_price}' where username = '{message.Chat.Username}'";
                                     await ConnectToSQL(query);
@@ -408,14 +421,15 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                     cmd.CommandText = @"select top 1 id_add from Adds order by id_add desc";
                                     cmd.Connection = myConnection;
                                     int addID = (int)cmd.ExecuteScalar();
+                                     
                                     if (managers_table.Rows.Count > 0)
                                     {
                                         for (int i = 0; i < managers_table.Rows.Count; i++)
                                         {
-                                            await SentToManager(int.Parse(managers_table.Rows[i][0].ToString().Trim()), cancellationToken, addID, message.Chat.Username, addtxt);
+                                            await SentToManager(long.Parse(managers_table.Rows[i][0].ToString().Trim()), cancellationToken, addID, message.Chat.Username, addtxt);
                                         }
                                     }
-                                    
+
                                 }
                                 else
                                 {
@@ -479,9 +493,8 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                             secquery = $"update adds set status = '3' where id_add = '{message.Text}'";
                                             await SentCabinet(role, chatId, cancellationToken, "Заявка была успешно удалена!");
                                         }
-                                        string upd_p = $"update publishertoadd set status = '3' where id_add = {message.Text}";
-                                        await ConnectToSQL(upd_p);
-                                        string SendNoteToP_q = $"select chatId from publishertoadd inner join users on publishertoadd.id_publisher = users.id_user where id_add = {message.Text}";
+                                        
+                                        string SendNoteToP_q = $"select chatId from publishertoadd inner join users on publishertoadd.id_publisher = users.id_user where id_add = {message.Text} and status = '1'";
                                         SqlDataAdapter SendNoteToP_adpt = new(SendNoteToP_q, myConnection);
                                         DataTable SendNoteToP_table = new();
                                         SendNoteToP_adpt.Fill(SendNoteToP_table);
@@ -489,15 +502,24 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                         {
                                             for (int i = 0; i < SendNoteToP_table.Rows.Count; i++)
                                             {
-                                                await CommandAndTxt(long.Parse(SendNoteToP_table.Rows[i][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была {action} \n \n Для выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken);
+                                                await CommandAndTxt(long.Parse(SendNoteToP_table.Rows[i][0].ToString().Trim()), $"К сожалению заявка №{message.Text}, к которой вы были привязаны, была {action} \n \nТеперь вы можете выбрать новую заявку", cancellationToken);
                                             }
                                         }
+                                        string upd_p = $"update publishertoadd set status = '3' where id_add = {message.Text}";
+                                        await ConnectToSQL(upd_p);
                                     }
                                     await ConnectToSQL(secquery);
                                 }
                                 else
                                 {
-                                    await CommandAndTxt(chatId, "Такой заявки не существуе", cancellationToken);
+                                    if (setstatus_table.Rows[0][0].ToString() != "3")
+                                    {
+                                        await CommandAndTxt(chatId, "Такой заявки не существует", cancellationToken);
+                                    }
+                                    else if (setstatus_table.Rows[0][0].ToString() != "4")
+                                    {
+                                        await CommandAndTxt(chatId, "Вы не можете изменять/удалять заявку в статусе \"На проверке\"", cancellationToken);
+                                    }                                    
                                 }
                             }
                             else
@@ -699,8 +721,8 @@ async Task ChoosePayRent(long chatId, CancellationToken cancellationToken, int m
         InlineKeyboardButton.WithCallbackData("Расширенный", $"Тариф_3_{choosePayRentmsg.MessageId}"),
         InlineKeyboardButton.WithCallbackData("Максимум", $"Тариф_4_{choosePayRentmsg.MessageId}")
     });
-    await botClient.EditMessageReplyMarkupAsync(chatId, choosePayRentmsg.MessageId, ikmChoosePayRent);
 
+    await botClient.EditMessageReplyMarkupAsync(chatId, choosePayRentmsg.MessageId, ikmChoosePayRent);
 }
 
 async Task SentToManager(long chatId, CancellationToken cancellationToken, int addID, string? username, string txt)
@@ -708,7 +730,6 @@ async Task SentToManager(long chatId, CancellationToken cancellationToken, int a
     Message checkNewAddMsg = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: $"Новая заявка {addID} от @{username} \n \nТекст: {txt}",
-        replyMarkup: MrkmMenu,
         cancellationToken: cancellationToken);
 
     InlineKeyboardMarkup checkNewAddIkm = new(new[]
@@ -716,7 +737,7 @@ async Task SentToManager(long chatId, CancellationToken cancellationToken, int a
         InlineKeyboardButton.WithCallbackData("Подтвердить", $"Менеджер подтвердил_{addID}_{checkNewAddMsg.MessageId}"),
         InlineKeyboardButton.WithCallbackData("Отклонить", $"Менеджер отклонил_{addID}_{checkNewAddMsg.MessageId}")
     });
-    await botClient.EditMessageReplyMarkupAsync(chatId, checkNewAddMsg.MessageId, checkNewAddIkm, cancellationToken);
+    await botClient.EditMessageReplyMarkupAsync(chatId, checkNewAddMsg.MessageId, checkNewAddIkm);
 }
 
 async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, string excel_q, string FName)
@@ -824,13 +845,6 @@ async Task SentExcelToManager(long chatId, CancellationToken cancellationToken, 
             await Task.CompletedTask;
         }
         await Task.CompletedTask;
-
-        //Excel.Workbook wb = new();
-        //DataTable excel_dt = new();
-        //SqlDataAdapter excel_adpt = new(excel_q, myConnection);
-        //excel_adpt.Fill(excel_dt);
-        //wb.Worksheets.Add(excel_dt, "WorksheetName");*/
-        await Task.CompletedTask;
     }
     catch (Exception ex)
     {
@@ -917,7 +931,6 @@ async Task CommandAndTxt(long chatId, string txt, CancellationToken cancellation
     Message sentMenu = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: txt,
-        replyMarkup: new ReplyKeyboardRemove(),
         cancellationToken: cancellationToken);
 }
 
@@ -964,30 +977,30 @@ async Task PersonalCabinet(Message message, int? role, long chatId, Cancellation
         DataTable acc_table = new();
         acc_adpt.Fill(acc_table);
 
-        string msg = $"Личный кабинет пользователя @{message.Chat.Username}:\nРоль - {acc_table.Rows[0][0]} \nКоличество средств на счёте - {acc_table.Rows[0][1]} \n \n   Все заявки \n - - - - - - - - - - - - -\n";
+        string msg = $"Личный кабинет пользователя @{message.Chat.Username}:\nРоль - {acc_table.Rows[0][0]} \nКоличество средств на счёте - {acc_table.Rows[0][1]}";
         
         if (pc_table.Rows.Count > 0)
         {            
             string row = "";
             if (role == 1)
             {
+                msg += "\n\n   Все заявки \n - - - - - - - - - - - - -\n";
                 for (int i = 0; i < pc_table.Rows.Count; i++)
                 {                    
-                    row += $"Заявка №{pc_table.Rows[i][0]} \nТекст: {pc_table.Rows[i][1]} \nСтатус: {pc_table.Rows[i][2]} \nТариф: {pc_table.Rows[i][3]} - {pc_table.Rows[i][5]} паблишеров за {pc_table.Rows[i][6]} ед/день \nКол-во активных паблишеров: {pc_table.Rows[i][4]} из {pc_table.Rows[i][5]} \nПрошло {pc_table.Rows[i][4]} из {pc_table.Rows[i][5]} часов \n \n";
+                    row += $"Заявка №{pc_table.Rows[i][0]} \nТекст: {pc_table.Rows[i][1]} \nСтатус: {pc_table.Rows[i][2]} \nТариф: {pc_table.Rows[i][3]} - {pc_table.Rows[i][5]} паблишеров за {pc_table.Rows[i][6]} ед/день \nКол-во активных паблишеров: {pc_table.Rows[i][4]} из {pc_table.Rows[i][5]} \nПрошло {pc_table.Rows[i][7]} из {pc_table.Rows[i][8]} часов \n \n";
                 }
             }
             else
             {
-                msg = $"Заявка №{pc_table.Rows[0][0]} \nТекст: {pc_table.Rows[0][1]} \nБудет активна ещё {int.Parse(pc_table.Rows[0][2].ToString().Trim()) - int.Parse(pc_table.Rows[0][3].ToString().Trim())} часов \nВы рекламировали {pc_table.Rows[0][4]} часов \nЗаработано {int.Parse(pc_table.Rows[0][3].ToString().Trim()) * 90} \n \n";                
+                msg += $"\n - - - - - - - - - - - - -\n Заявка №{pc_table.Rows[0][0]} \nТекст: {pc_table.Rows[0][1]} \nБудет активна ещё {int.Parse(pc_table.Rows[0][2].ToString().Trim()) - int.Parse(pc_table.Rows[0][3].ToString().Trim())} часов \nВы рекламировали {pc_table.Rows[0][4]} часов \nЗаработано {int.Parse(pc_table.Rows[0][4].ToString().Trim()) * 90} \n \n";                
             }
             
             msg += row;
         }
         else
         {
-            msg += "   Заявок нет \n";
+            msg += "\n\n   Заявок нет \n";
         }
-        Console.WriteLine($"{msg} - - - - - - - -\n");
         await SentCabinet(role, chatId, cancellationToken, msg);
     }
     catch (Exception ex)
@@ -1035,7 +1048,7 @@ async Task ShowAllAvailableAdds(Message message, long chatId, CancellationToken 
 
 async Task PublDeleteOrReject(string username, string id_add, int? role, long chatId, CancellationToken cancellationToken)
 {
-    string update_query = $"update publishertoadd set status = 3 where id_publisher = (select id_user from users where username = '{username}')";
+    string update_query = $"update publishertoadd set status = 3 where id_publisher = (select id_user from users where username = '{username}') and status = '1'";
     await ConnectToSQL(update_query);
     await SentMenu(role, chatId, cancellationToken, "Вы успешно отказались от заявки");
     string SendNoteToAdv_q = $"select chatId from adds inner join users on adds.advertiser = users.id_user where id_add = {id_add}";
@@ -1044,7 +1057,7 @@ async Task PublDeleteOrReject(string username, string id_add, int? role, long ch
     SendNoteToAdv_adpt.Fill(SendNoteToAdv_table);
     if (SendNoteToAdv_table.Rows.Count != 0)
     {
-        await CommandAndTxt(long.Parse(SendNoteToAdv_table.Rows[0][0].ToString().Trim()), $"К сожалению, паблишер отказался заявки №{id_add} \nТеперь она снова доступна для выбора", cancellationToken);
+        await CommandAndTxt(long.Parse(SendNoteToAdv_table.Rows[0][0].ToString().Trim()), $"К сожалению, один из паблишеров отказался заявки №{id_add}", cancellationToken);
     }
 }
 
@@ -1071,7 +1084,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
         switch (update.Type)
         {
             case UpdateType.CallbackQuery:
-                Console.WriteLine($"Received a '{update.CallbackQuery.Data}' CallbackQuery in chat {update.CallbackQuery.From.Id} with @{update.CallbackQuery.From.Username}");
+                Console.WriteLine($"Получен '{update.CallbackQuery.Data}' запрос в чате №{update.CallbackQuery.From.Id} с @{update.CallbackQuery.From.Username}");
                 if (update.CallbackQuery != null)
                 {
                     chatId = update.CallbackQuery.From.Id;
@@ -1102,7 +1115,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                                     string msgToPubl_query = $"select chatID from users where id_user = '{AddsForDel_table.Rows[i][0]}'";
                                     SqlDataAdapter msgToPubl_adpt = new(msgToPubl_query, myConnection);
                                     msgToPubl_adpt.Fill(msgToPubl_table);
-                                    await CommandAndTxt(long.Parse(msgToPubl_table.Rows[i][0].ToString().Trim()), "К сожалению, заявка, к который вы были привязаны, была удалена \n \nДля выбора новой заявки перейдите в меню по команде \"/start\"", cancellationToken);
+                                    await CommandAndTxt(long.Parse(msgToPubl_table.Rows[i][0].ToString().Trim()), "К сожалению, заявка, к который вы были привязаны, была удалена \n \nТеперь вы можете выбрать новую заявку", cancellationToken);
                                 }
                             }
                             
@@ -1209,15 +1222,15 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
 
                         if (update.CallbackQuery.Data.Contains("подтвердил"))
                         {
-                            await CommandAndTxt(update.CallbackQuery.From.Id, $"Завяка №{addID} была подтверждена!", cancellationToken);
-                            await CommandAndTxt(long.Parse(addinfo_table.Rows[0][0].ToString().Trim()), $"Завяка №{addID} была подтверждена!", cancellationToken);
+                            await SentMenu(3, update.CallbackQuery.From.Id, cancellationToken, $"Завяка №{addID} была подтверждена!");
+                            await SentMenu(1, long.Parse(addinfo_table.Rows[0][0].ToString().Trim()), cancellationToken, $"Завяка №{addID} была подтверждена!");
                             string upd_add = $"update adds set status = '2' where id_add = '{addID}'";
                             await ConnectToSQL(upd_add);
                         }
                         else
                         {
-                            await CommandAndTxt(update.CallbackQuery.From.Id, $"Завяка №{addID} была отклонена!", cancellationToken);
-                            await CommandAndTxt(long.Parse(addinfo_table.Rows[0][0].ToString().Trim()), $"Завяка №{addID} была отклонена менеджером!", cancellationToken);
+                            await SentMenu(3, update.CallbackQuery.From.Id, cancellationToken, $"Завяка №{addID} была отклонена!");
+                            await SentMenu(1, long.Parse(addinfo_table.Rows[0][0].ToString().Trim()), cancellationToken, $"Завяка №{addID} была отклонена!");
                             string upd_add = $"update adds set status = '3' where id_add = '{addID}'";
                             await ConnectToSQL(upd_add);
                             string upd_user = $"update users set account = account + '{int.Parse(addinfo_table.Rows[0][2].ToString().Trim()) * int.Parse(addinfo_table.Rows[0][3].ToString().Trim()) / 24}' where id_user = '{int.Parse(addinfo_table.Rows[0][1].ToString().Trim())}'";
@@ -1232,7 +1245,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                 int result = DateTime.Compare(message.Date, dt_start);
                 if (result < 0)
                 {
-                    Console.WriteLine($"Received a '{message.Text}' message in chat {message.Chat.Id} with @{message.Chat.Username}");
+                    Console.WriteLine($"Получено сообщение '{message.Text}' в чате №{message.Chat.Id} с @{message.Chat.Username} в {DateTime.Now}");
                     for (int i = 0; i < start_table.Rows.Count; i++)
                     {
                         BotUser old_user = new();
@@ -1296,3 +1309,4 @@ Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, 
 }
 
 Console.ReadLine();
+
