@@ -315,7 +315,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 await SentMenu(role, chatId, cancellationToken, greetings);
             }
 
-            else if (message.Text == "Создать новое объявление")
+            else if (message.Text == "Создать новое объявление.")
             {
                 Message sentmsg = await botClient.SendTextMessageAsync(
                 chatId: chatId,
