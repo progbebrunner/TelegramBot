@@ -8,10 +8,9 @@ using System.Data.SqlClient;
 using System.Data;
 using TelegramBot;
 using Excel = Microsoft.Office.Interop.Excel;
-using System.IO;
-using System.Diagnostics;
-using System.Threading;
-
+using yoomoney_api.authorize;
+using yoomoney_api.account;
+using yoomoney_api.quickpay;
 
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
@@ -22,6 +21,22 @@ ReceiverOptions receiverOptions = new()
 {
     AllowedUpdates = Array.Empty<UpdateType>() 
 };
+
+Authorize authorize = new(clientId: "67AB7495E5352D20DDE2206EBE551868998E33071C2DA3247193B7E26DBF9562", redirectUri: "https://t.me/bebrunner_bot", scope: new[]
+{
+    "account-info",
+    "operation-history",
+    "operation-details",
+    "incoming-transfers",
+    "payment-p2p",
+});
+
+string? token = await authorize.GetAccessToken(code: "https://t.me/bebrunner_bot?code=7518F0F6764845B44A08B0143F970EFDE3E34CB1A23D454F8DFAE2F5C93167E1D759673FD8E22E9145215DB85EFC65B385FB8B9F61B5BED6FDBFC7FE6F9E0FEE772AC1F2DDC8B50321D99CD0A8554191D6B63ECCCBF98957D1DEF18B7C8A84E4F2634BF2986314BC21FB7A13993841DBAB4837E655BFD416FF188475380F7040", clientId: "67AB7495E5352D20DDE2206EBE551868998E33071C2DA3247193B7E26DBF9562", redirectUri: "https://t.me/bebrunner_bot");
+Client ymClient = new Client(token: authorize.TokenUrl);
+Account accountInfo = ymClient.GetAccountInfo(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
+accountInfo.Print();
+
+
 
 BotUser[] users = Array.Empty<BotUser>();
 string addtxt = "";
@@ -113,13 +128,37 @@ botClient.StartReceiving(
 );
 User me = await botClient.GetMeAsync();
 
+Console.WriteLine($" - - - - - - - - - - ");
 Console.WriteLine($"Start listening for @{me.Username}");
-var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+
+var AddsTimer = new PeriodicTimer(TimeSpan.FromHours(1));
 await CheckAdds();
-while (await timer.WaitForNextTickAsync(cts.Token))
+while (await AddsTimer.WaitForNextTickAsync(cts.Token))
 {
     await CheckAdds();
 }
+
+async Task CheckPayments(string OperId, long ChatId, long MsgId)
+{
+    int c = 0;
+    var PaymentTimer = new PeriodicTimer(TimeSpan.FromMinutes(10));
+    while (await PaymentTimer.WaitForNextTickAsync(cts.Token))
+    {
+        if (c == 0) 
+        {
+            var operationrHistory = ymClient.GetOperationHistory(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
+            foreach (var x in operationrHistory.Operations.ToList())
+            {
+                if (x.OperationId == OperId && x.Status == "success")
+                {
+                    await CommandAndTxt(ChatId, "Средства успешно зачислены на счёт", cts.Token);
+                }
+            }
+        }
+    }
+}
+
+
 Console.ReadLine();
 
 cts.Cancel();
@@ -315,7 +354,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 await SentMenu(role, chatId, cancellationToken, greetings);
             }
 
-            else if (message.Text == "Создать новое объявление.")
+            else if (message.Text == "Создать новое объявление")
             {
                 Message sentmsg = await botClient.SendTextMessageAsync(
                 chatId: chatId,
@@ -445,17 +484,18 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
 
                         else if (message.ReplyToMessage.Text == addmoney)
                         {
-                            if (int.Parse(message.Text) >= 0)
+                            if (int.Parse(message.Text) >= 2)
                             {
-
-                                string addmoney_q = $"update users set account = account + {int.Parse(message.Text)} where username = '{message.Chat.Username}'";
-                                await ConnectToSQL(addmoney_q);
-                                await SentCabinet(role, chatId, cancellationToken, "Средства успешно добавлены на счёт");
-                                await PersonalCabinet(message, role, chatId, cancellationToken);
+                                decimal summ = (decimal)(int.Parse(message.Text) * 1.03);
+                                var quickpay = new Quickpay(receiver: "4100118704262799", quickpayForm: "shop", sum: summ, label: message.Chat.Username.ToString(), paymentType: "AC");
+                                Console.WriteLine();
+                                var hyperLinkKeyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl("Ссылка на оплату с учётом комисси в 3%", quickpay.LinkPayment));
+                                await botClient.SendTextMessageAsync(message.Chat, "Перейдите по ссылке, чтобы пополнить счёт", replyMarkup: hyperLinkKeyboard);
+                                //await CheckPayments(quickpay.Ope)
                             }
                             else
                             {
-                                await CommandAndTxt(chatId, "Количество средств, на которое вы хотите пополнить счёт, должно быть не меньше 0", cancellationToken);
+                                await CommandAndTxt(chatId, "Количество средств, на которое вы хотите пополнить счёт, должно быть не меньше 2", cancellationToken);
                                 await PersonalCabinet(message, role, chatId, cancellationToken);
                             }
                         }
@@ -920,7 +960,7 @@ async Task ChooseRole(Message message, long chatId, CancellationToken cancellati
 
     Message sentMessage = await botClient.SendTextMessageAsync(
         chatId: chatId,
-        text: $"Здравствуйте, [ИМЯ ПОЛЬЗОВАТЕЛЯ В ТГ]! \n \nДля начала работы с ботом, пожалуйста, выберите роль",
+        text: $"Здравствуйте, {message.Chat.FirstName}! \n \nДля начала работы с ботом, пожалуйста, выберите роль",
         replyMarkup: rkmChooseRole,
         cancellationToken: cancellationToken);
 }
@@ -930,6 +970,15 @@ async Task CommandAndTxt(long chatId, string txt, CancellationToken cancellation
     Message sentMenu = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: txt,
+        cancellationToken: cancellationToken);
+}
+
+async Task CommandAndTxtNoReply(long chatId, string txt, CancellationToken cancellationToken)
+{
+    Message sentMenu = await botClient.SendTextMessageAsync(
+        chatId: chatId,
+        text: txt,
+        replyMarkup: new ReplyKeyboardRemove(),
         cancellationToken: cancellationToken);
 }
 
@@ -1155,7 +1204,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         }
                         string query = $"update users set role = NULL, account = '0' where username = '{update.CallbackQuery.From.Username}'";
                         await ConnectToSQL(query);
-                        await CommandAndTxt(chatId, "Команда подтверждена \n \nДля активации напишите команду \"/start\"", cancellationToken);
+                        await CommandAndTxtNoReply(chatId, "Команда подтверждена \n \nДля активации напишите команду \"/start\"", cancellationToken);
                     }
 
                     else if (update.CallbackQuery.Data.Contains("Отмененено"))
