@@ -14,7 +14,7 @@ using System.Threading;
 
 
 
-TelegramBotClient botClient = new("{YOUR_TOKEN}");
+TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
 
 using CancellationTokenSource cts = new();
 
@@ -111,7 +111,6 @@ botClient.StartReceiving(
     receiverOptions: receiverOptions,
     cancellationToken: cts.Token
 );
-await botClient.DeleteWebhookAsync();
 User me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
@@ -475,7 +474,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                     if (message.ReplyToMessage.Text == activateadd)
                                     {
                                         secquery = $"update adds set status = '1' where id_add = '{message.Text}'";
-                                        await SentCabinet(role, chatId, cancellationToken, "Статус заявки успешно обновлён!");
+                                        await CommandAndTxt(chatId, "Статус заявки успешно обновлён!", cancellationToken);
                                     }
                                     else
                                     {
@@ -921,7 +920,7 @@ async Task ChooseRole(Message message, long chatId, CancellationToken cancellati
 
     Message sentMessage = await botClient.SendTextMessageAsync(
         chatId: chatId,
-        text: $"Здравствуйте, {message.Chat.FirstName}! \n \nДля начала работы с ботом, пожалуйста, выберите роль",
+        text: $"Здравствуйте, [ИМЯ ПОЛЬЗОВАТЕЛЯ В ТГ]! \n \nДля начала работы с ботом, пожалуйста, выберите роль",
         replyMarkup: rkmChooseRole,
         cancellationToken: cancellationToken);
 }
