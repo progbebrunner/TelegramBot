@@ -11,6 +11,7 @@ using Excel = Microsoft.Office.Interop.Excel;
 using yoomoney_api.authorize;
 using yoomoney_api.account;
 using yoomoney_api.quickpay;
+using System.Threading;
 
 
 TelegramBotClient botClient = new("6762325774:AAHXTbacyLzyYmYh8VYZf7SZuh-Ozh_NxG4");
@@ -32,10 +33,11 @@ Authorize authorize = new(clientId: "67AB7495E5352D20DDE2206EBE551868998E33071C2
 });
 
 string? token = await authorize.GetAccessToken(code: "https://t.me/bebrunner_bot?code=7518F0F6764845B44A08B0143F970EFDE3E34CB1A23D454F8DFAE2F5C93167E1D759673FD8E22E9145215DB85EFC65B385FB8B9F61B5BED6FDBFC7FE6F9E0FEE772AC1F2DDC8B50321D99CD0A8554191D6B63ECCCBF98957D1DEF18B7C8A84E4F2634BF2986314BC21FB7A13993841DBAB4837E655BFD416FF188475380F7040", clientId: "67AB7495E5352D20DDE2206EBE551868998E33071C2DA3247193B7E26DBF9562", redirectUri: "https://t.me/bebrunner_bot");
-Client ymClient = new Client(token: authorize.TokenUrl);
+Client ymClient = new(token: authorize.TokenUrl);
 Account accountInfo = ymClient.GetAccountInfo(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
 accountInfo.Print();
-
+var operationrHistory = ymClient.GetOperationHistory(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
+//operationrHistory.Print();
 
 
 BotUser[] users = Array.Empty<BotUser>();
@@ -138,23 +140,31 @@ while (await AddsTimer.WaitForNextTickAsync(cts.Token))
     await CheckAdds();
 }
 
-async Task CheckPayments(string OperId, long ChatId, long MsgId)
+async Task CheckPayments(string username, long ChatId, int MsgId, DateTime dt, decimal sum)
 {
     int c = 0;
-    var PaymentTimer = new PeriodicTimer(TimeSpan.FromMinutes(10));
+    var PaymentTimer = new PeriodicTimer(TimeSpan.FromMinutes(3));
     while (await PaymentTimer.WaitForNextTickAsync(cts.Token))
     {
         if (c == 0) 
         {
             var operationrHistory = ymClient.GetOperationHistory(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
-            foreach (var x in operationrHistory.Operations.ToList())
+            foreach (var x in operationrHistory.Operations?.ToList())
             {
-                if (x.OperationId == OperId && x.Status == "success")
+                if (x.Datetime < dt)
                 {
-                    await CommandAndTxt(ChatId, "Средства успешно зачислены на счёт", cts.Token);
+                    await botClient.EditMessageTextAsync(ChatId, MsgId, "Время оплаты заявки вышло", replyMarkup: null);
+                    if (x.Label == username && x.Status == "success")
+                    {
+                        await CommandAndTxt(ChatId, $"{sum/1.03m} руб. успешно зачислены на счёт", cts.Token);
+                        string summ = sum.ToString().Replace(',', '.');
+                        string query = $"update Users set account = account + '{summ}' where chatID = '{ChatId}'";
+                        await ConnectToSQL(query);
+                    }                    
                 }
             }
         }
+        c++;
     }
 }
 
@@ -486,12 +496,12 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                         {
                             if (int.Parse(message.Text) >= 2)
                             {
-                                decimal summ = (decimal)(int.Parse(message.Text) * 1.03);
-                                var quickpay = new Quickpay(receiver: "4100118704262799", quickpayForm: "shop", sum: summ, label: message.Chat.Username.ToString(), paymentType: "AC");
+                                decimal summ = int.Parse(message.Text) * 1.03m;
+                                var quickpay = new Quickpay("4100118704262799", "shop", summ, message.Chat.Username.ToString(), "AC");
                                 Console.WriteLine();
                                 var hyperLinkKeyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl("Ссылка на оплату с учётом комисси в 3%", quickpay.LinkPayment));
-                                await botClient.SendTextMessageAsync(message.Chat, "Перейдите по ссылке, чтобы пополнить счёт", replyMarkup: hyperLinkKeyboard);
-                                //await CheckPayments(quickpay.Ope)
+                                Message msg = await botClient.SendTextMessageAsync(message.Chat, "Перейдите по ссылке, чтобы пополнить счёт", replyMarkup: hyperLinkKeyboard);
+                                await CheckPayments(message.Chat.Username, chatId, msg.MessageId, DateTime.Now.AddMinutes(10), summ);
                             }
                             else
                             {
