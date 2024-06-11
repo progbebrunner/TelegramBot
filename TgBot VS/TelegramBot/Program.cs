@@ -132,6 +132,9 @@ User me = await botClient.GetMeAsync();
 
 Console.WriteLine($" - - - - - - - - - - ");
 Console.WriteLine($"Start listening for @{me.Username}");
+Console.ReadLine();
+
+cts.Cancel();
 
 var AddsTimer = new PeriodicTimer(TimeSpan.FromHours(1));
 await CheckAdds();
@@ -139,39 +142,6 @@ while (await AddsTimer.WaitForNextTickAsync(cts.Token))
 {
     await CheckAdds();
 }
-
-async Task CheckPayments(string username, long ChatId, int MsgId, DateTime dt, decimal sum)
-{
-    int c = 0;
-    var PaymentTimer = new PeriodicTimer(TimeSpan.FromMinutes(3));
-    while (await PaymentTimer.WaitForNextTickAsync(cts.Token))
-    {
-        if (c == 0) 
-        {
-            var operationrHistory = ymClient.GetOperationHistory(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
-            foreach (var x in operationrHistory.Operations?.ToList())
-            {
-                if (x.Datetime < dt)
-                {
-                    await botClient.EditMessageTextAsync(ChatId, MsgId, "Время оплаты заявки вышло", replyMarkup: null);
-                    if (x.Label == username && x.Status == "success")
-                    {
-                        await CommandAndTxt(ChatId, $"{sum/1.03m} руб. успешно зачислены на счёт", cts.Token);
-                        string summ = sum.ToString().Replace(',', '.');
-                        string query = $"update Users set account = account + '{summ}' where chatID = '{ChatId}'";
-                        await ConnectToSQL(query);
-                    }                    
-                }
-            }
-        }
-        c++;
-    }
-}
-
-
-Console.ReadLine();
-
-cts.Cancel();
 
 async Task CheckAdds()
 {
@@ -287,6 +257,35 @@ async Task CheckAdds()
 
 }
 
+async Task CheckPayments(string username, long ChatId, int MsgId, DateTime dt, decimal sum)
+{
+    int c = 0;
+    var PaymentTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+    while (await PaymentTimer.WaitForNextTickAsync(cts.Token))
+    {
+        if (c < 10)
+        {
+            var operationrHistory = ymClient.GetOperationHistory(token: "4100118704262799.308483B82C251853565F0A2B2DBED4519B8A7BC09833890550442613325D00EE55E9A0A129F8BC0D22322D95FA570D2B8DD6D413B2175F48C2751B2A6CBAD5258DB9659FBC88E158253D88A4F2AC6B32807AAF84C8EB88ED8760311FE7C2925791151DFE995E318889811EF54207AA12C59B1E7416789AA9F4B0B19BEC5BA6C3");
+            foreach (var x in operationrHistory.Operations?.ToList())
+            {
+                if (x.Datetime > dt && x.Label == username && x.Status == "success")
+                {
+                    await CommandAndTxt(ChatId, $"{sum / 1.03m} руб. успешно зачислены на счёт", cts.Token);
+                    string summ = sum.ToString().Replace(',', '.');
+                    string query = $"update Users set account = account + '{sum / 1.03m}' where chatID = '{ChatId}'";
+                    await ConnectToSQL(query);
+                }
+            }
+        }
+        else if (c == 10)
+        {
+            await botClient.EditMessageTextAsync(ChatId, MsgId, "Время работы ссылки вышло", replyMarkup: null);
+            PaymentTimer.Dispose();
+        }
+        c++;
+    }
+}
+
 async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationToken cancellationToken)
 {
     try
@@ -321,7 +320,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 {
                     if (chooserole_table.Rows[0][0].ToString().Trim() == "")
                     {
-                        query = $"update users set role = '{role}', account = '10000' where username = '{message.Chat.Username}'";
+                        query = $"update users set role = '{role}', account = '0' where username = '{message.Chat.Username}'";
                         await ConnectToSQL(query);
                         int index;
                         foreach(BotUser u in users)
@@ -337,7 +336,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                 }
                 else
                 {
-                    query = $"insert into Users (username, surname, name, role, account, chatID) values ('{message.Chat.Username}', '{message.Chat.LastName}', '{message.Chat.FirstName}', '{role}', '10000', '{message.Chat.Id}')";
+                    query = $"insert into Users (username, surname, name, role, account, chatID) values ('{message.Chat.Username}', '{message.Chat.LastName}', '{message.Chat.FirstName}', '{role}', '0', '{message.Chat.Id}')";
                     await ConnectToSQL(query);
                     Array.Resize(ref users, users.Length + 1);
                     BotUser new_user = new();
@@ -455,13 +454,15 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                                     }
                                 }
                                 int add_price = int.Parse(message.Text.Trim()) * payrate_price;
-                                if (int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) >= add_price)
+                                decimal acc = 0.0m;
+                                acc = decimal.Parse(accCheck_table.Rows[0][0].ToString().Trim());
+                                if (acc >= add_price)
                                 {
                                     DateTime dt_now= new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, DateTime.Now.Hour, DateTime.Now.Minute, 0);
 
                                     string query = $"insert into Adds (advertiser, text, id_payrate, status, hours, active_hours, last_hours_add) values ((select id_user from users where username = '{message.Chat.Username}'), '{addtxt}', {payrateid}, '4', '{int.Parse(message.Text) * 24}', '0', '{dt_now}')";
                                     await ConnectToSQL(query);
-                                    query = $"update users set account = '{int.Parse(accCheck_table.Rows[0][0].ToString().Trim()) - add_price}' where username = '{message.Chat.Username}'";
+                                    query = $"update users set account = '{acc - add_price}' where username = '{message.Chat.Username}'";
                                     await ConnectToSQL(query);
                                     msg = $"Объявление успешно создано и отправлено на проверку";
 
@@ -498,8 +499,7 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                             {
                                 decimal summ = int.Parse(message.Text) * 1.03m;
                                 var quickpay = new Quickpay("4100118704262799", "shop", summ, message.Chat.Username.ToString(), "AC");
-                                Console.WriteLine();
-                                var hyperLinkKeyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl("Ссылка на оплату с учётом комисси в 3%", quickpay.LinkPayment));
+                                var hyperLinkKeyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl("Ссылка на оплату с учётом комиссии в 3%", quickpay.LinkPayment));
                                 Message msg = await botClient.SendTextMessageAsync(message.Chat, "Перейдите по ссылке, чтобы пополнить счёт", replyMarkup: hyperLinkKeyboard);
                                 await CheckPayments(message.Chat.Username, chatId, msg.MessageId, DateTime.Now.AddMinutes(10), summ);
                             }
@@ -659,7 +659,6 @@ async Task TgBotProgramm(Update? update, int? role, long chatId, CancellationTok
                     await CommandAndTxt(chatId, "Вы не можете выбрать новую заявку, так как уже выбрали другую", cancellationToken);
                     await SentMenu(role, chatId, cancellationToken, "");
                 }
-
             }
 
             else if (message.ReplyToMessage != null)
@@ -941,7 +940,7 @@ async Task SentCabinet(int? role, long chatId, CancellationToken cancellationTok
 {
     if (role == 1)
     {
-        Message sentMenu = await botClient.SendTextMessageAsync(
+        Message sentCab = await botClient.SendTextMessageAsync(
             chatId: chatId,
             text: $"{txt}",
             replyMarkup: ArkmCabinet,
@@ -949,7 +948,7 @@ async Task SentCabinet(int? role, long chatId, CancellationToken cancellationTok
     }
     else if (role == 2)
     {
-        Message sentMenu = await botClient.SendTextMessageAsync(
+        Message sentCab = await botClient.SendTextMessageAsync(
             chatId: chatId,
             text: $"{txt}",
             replyMarkup: PrkmCabinet,
@@ -977,15 +976,16 @@ async Task ChooseRole(Message message, long chatId, CancellationToken cancellati
 
 async Task CommandAndTxt(long chatId, string txt, CancellationToken cancellationToken)
 {
-    Message sentMenu = await botClient.SendTextMessageAsync(
+    Message sentMsg = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: txt,
+        replyMarkup: null,
         cancellationToken: cancellationToken);
 }
 
 async Task CommandAndTxtNoReply(long chatId, string txt, CancellationToken cancellationToken)
 {
-    Message sentMenu = await botClient.SendTextMessageAsync(
+    Message sentMsg = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: txt,
         replyMarkup: new ReplyKeyboardRemove(),
@@ -996,7 +996,7 @@ async Task WrongData(Message message, int? role, long chatId, CancellationToken 
 {
     if (role == 1)
     {
-        Message sentMenu = await botClient.SendTextMessageAsync(
+        Message sentMsg = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: $"Вы ввели неправильное значение {menuanswer}",
         replyMarkup: ArkmMenu,
@@ -1004,7 +1004,7 @@ async Task WrongData(Message message, int? role, long chatId, CancellationToken 
     }
     else if (role == 2)
     {
-        Message sentMenu = await botClient.SendTextMessageAsync(
+        Message sentMsg = await botClient.SendTextMessageAsync(
         chatId: chatId,
         text: $"Вы ввели неправильное значение {menuanswer}",
         replyMarkup: PrkmMenu,
@@ -1344,7 +1344,7 @@ async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, Cancel
                         await TgBotProgramm(update, 0, chatId, cancellationToken);
                     }
                 }
-                break;
+            break;
         }
     }
     catch (Exception ex)
