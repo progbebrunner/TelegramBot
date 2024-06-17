@@ -32,7 +32,6 @@ Authorize authorize = new(clientId: "[ID КЛИЕНТА]", redirectUri: "https:/
     "payment-p2p",
 });
 
-//string? token = await authorize.GetAccessToken(code: "https://t.me/bebrunner_bot?code=7518F0F6764845B44A08B0143F970EFDE3E34CB1A23D454F8DFAE2F5C93167E1D759673FD8E22E9145215DB85EFC65B385FB8B9F61B5BED6FDBFC7FE6F9E0FEE772AC1F2DDC8B50321D99CD0A8554191D6B63ECCCBF98957D1DEF18B7C8A84E4F2634BF2986314BC21FB7A13993841DBAB4837E655BFD416FF188475380F7040", clientId: "67AB7495E5352D20DDE2206EBE551868998E33071C2DA3247193B7E26DBF9562", redirectUri: "https://t.me/bebrunner_bot");
 Client ymClient = new(token: authorize.TokenUrl);
 Account accountInfo = ymClient.GetAccountInfo(token: "[ТОКЕН КОШЕЛЬКА]");
 accountInfo.Print();
